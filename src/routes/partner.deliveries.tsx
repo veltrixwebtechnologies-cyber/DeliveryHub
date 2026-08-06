@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { MapPanel } from "@/components/delivery/MapPanel";
+import { AddressNavigation, MapPanel } from "@/components/delivery/MapPanel";
 import { StatusBadge } from "@/components/delivery/StatusBadge";
 import { EmptyState } from "@/components/delivery/AppShell";
 import { supabase } from "@/integrations/supabase/client";
@@ -182,9 +182,11 @@ function Deliveries() {
   const step = active ? DELIVERY_FLOW.findIndex((s) => s.status === active.status) : -1;
   const next = active ? nextFlowStep(active.status) : null;
   const dropping = active?.status === "out_for_delivery";
-  const from: [number, number] | null = partner.current_latitude
+  const from: [number, number] | null = Number.isFinite(partner.current_latitude) && Number.isFinite(partner.current_longitude)
     ? [partner.current_latitude, partner.current_longitude!]
     : null;
+  const hasCustomerCoordinates = Number.isFinite(order?.customer_latitude) && Number.isFinite(order?.customer_longitude);
+  const hasVendorCoordinates = Number.isFinite(vendor?.latitude) && Number.isFinite(vendor?.longitude);
 
   return (
     <div className="space-y-6">
@@ -248,18 +250,32 @@ function Deliveries() {
               </div>
             </div>
 
-            {dropping && order?.customer_latitude ? (
-              <MapPanel
-                lat={order.customer_latitude}
-                lng={order.customer_longitude}
-                label={order.customer_address}
-                from={from}
-              />
-            ) : vendor?.latitude ? (
+            {dropping ? (
+              hasCustomerCoordinates ? (
+                <MapPanel
+                  lat={order.customer_latitude}
+                  lng={order.customer_longitude}
+                  label={order.customer_address}
+                  from={from}
+                />
+              ) : order?.customer_address ? (
+                <AddressNavigation
+                  address={order.customer_address}
+                  label="Customer delivery location"
+                  from={from}
+                />
+              ) : null
+            ) : hasVendorCoordinates ? (
               <MapPanel
                 lat={vendor.latitude}
                 lng={vendor.longitude}
                 label={vendor.address}
+                from={from}
+              />
+            ) : vendor?.address ? (
+              <AddressNavigation
+                address={vendor.address}
+                label={vendor.shop_name ?? "Pickup location"}
                 from={from}
               />
             ) : null}

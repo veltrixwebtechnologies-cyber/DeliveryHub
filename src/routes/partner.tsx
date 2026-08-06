@@ -82,20 +82,29 @@ function PartnerLayout() {
     const accuracy = Number.isFinite(reportedAccuracy) && reportedAccuracy > 0 && reportedAccuracy <= 2000
       ? reportedAccuracy
       : null;
-    const { error } = await db.rpc("submit_partner_location", {
-      _latitude: pos.coords.latitude,
-      _longitude: pos.coords.longitude,
-      _accuracy_m: accuracy,
-      // Browser fallback providers can return a stale device timestamp even
-      // though the callback is current. The server validates this timestamp,
-      // so use the callback time for the location update.
-      _captured_at: new Date().toISOString(),
-    });
-    if (error) {
-      console.error("[delivery-location] update failed", error);
+    try {
+      const { error } = await db.rpc("submit_partner_location", {
+        _latitude: pos.coords.latitude,
+        _longitude: pos.coords.longitude,
+        _accuracy_m: accuracy,
+        // Browser fallback providers can return a stale device timestamp even
+        // though the callback is current. The server validates this timestamp,
+        // so use the callback time for the location update.
+        _captured_at: new Date().toISOString(),
+      });
+      if (error) {
+        console.error("[delivery-location] update failed", error);
+        if (!locationErrorShownRef.current) {
+          locationErrorShownRef.current = true;
+          toast.error(`Location update failed: ${error.message}`);
+        }
+        return false;
+      }
+    } catch (error) {
+      console.error("[delivery-location] request failed", error);
       if (!locationErrorShownRef.current) {
         locationErrorShownRef.current = true;
-        toast.error(`Location update failed: ${error.message}`);
+        toast.error("Location update failed. Check your connection and try again.");
       }
       return false;
     }
@@ -116,24 +125,39 @@ function PartnerLayout() {
     }
   }, []);
 
-  const requestCurrentPosition = useCallback(() => {
+  const requestCurrentPosition = useCallback((): Promise<boolean> => {
+    if (!("geolocation" in navigator)) {
+      toast.error("Location services are not available in this browser.");
+      return Promise.resolve(false);
+    }
+
     // High-accuracy GPS can time out on desktops and indoors. Fall back to
     // the browser/network location so an online partner can still be found.
-    navigator.geolocation.getCurrentPosition(
-      submitPosition,
-      (error) => {
+    return new Promise((resolve) => {
+      const submit = (position: GeolocationPosition) => {
+        void submitPosition(position).then(resolve);
+      };
+      const fallback = (error: GeolocationPositionError) => {
         if (error.code !== 3) {
           handlePositionError(error);
+          resolve(false);
           return;
         }
-        navigator.geolocation.getCurrentPosition(submitPosition, handlePositionError, {
-          enableHighAccuracy: false,
-          maximumAge: 0,
-          timeout: 30_000,
-        });
-      },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 },
-    );
+        navigator.geolocation.getCurrentPosition(
+          submit,
+          (fallbackError) => {
+            handlePositionError(fallbackError);
+            resolve(false);
+          },
+          { enableHighAccuracy: false, maximumAge: 0, timeout: 30_000 },
+        );
+      };
+      navigator.geolocation.getCurrentPosition(submit, fallback, {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 15_000,
+      });
+    });
   }, [handlePositionError, submitPosition]);
 
   useEffect(() => {
@@ -320,9 +344,16 @@ function PartnerLayout() {
 
   async function respond(accept: boolean) {
     if (!request) return;
+    if (accept && new Date(request.expires_at).getTime() <= Date.now()) {
+      setRequest(null);
+      toast.info("This delivery request has expired. Stay online for the next request.");
+      return;
+    }
     setBusy(true);
     if (accept) {
-      const { data, error } = await db.rpc("accept_delivery_request", { _assignment_id: request.id });
+      const { data, error } = await db.rpc("accept_delivery_request", {
+        _assignment_id: request.id,
+      });
       setBusy(false);
       if (error) {
         console.error("[delivery-assignments] accept failed", {
@@ -337,10 +368,18 @@ function PartnerLayout() {
         return;
       }
       if (!data) {
-        toast.info("This request is no longer available.");
+        const message = new Date(request.expires_at).getTime() <= Date.now()
+          ? "This delivery request expired before it could be accepted. Stay online for the next request."
+          : "Another delivery partner accepted this request first.";
+        toast.info(message);
         setRequest(null);
         return;
       }
+      // Never delay acceptance for a GPS callback: a request is timed and can
+      // expire while a phone acquires a high-accuracy fix. The accepted
+      // assignment is now available, so this update becomes its first tracked
+      // location point.
+      void requestCurrentPosition();
       toast.success("Delivery accepted");
       setRequest(null);
       navigate({ to: "/partner/deliveries" });
@@ -354,17 +393,9 @@ function PartnerLayout() {
     }
   }
 
-  async function dismissRequest() {
-    const pending = request;
+  function closeRequestDialog() {
     setRequest(null);
-    if (!pending) return;
-
-    // Closing a request is a decline, not just a visual dismissal. This
-    // prevents the polling loop from reopening the same pending assignment.
-    const { error } = await db.rpc("reject_delivery_request", {
-      _assignment_id: pending.id,
-    });
-    if (error) console.error("[delivery-assignments] dismiss failed", error);
+    toast.info("Delivery request is still available and will reappear shortly.");
   }
 
   async function toggleOnline(on: boolean) {
@@ -373,7 +404,7 @@ function PartnerLayout() {
       toast.error("Your application is still under review.");
       return;
     }
-    if (!on) void dismissRequest();
+    if (!on) closeRequestDialog();
     const { error } = await db
       .from("delivery_partners")
       .update({ availability: on ? "online" : "offline" })
@@ -441,7 +472,7 @@ function PartnerLayout() {
 
       <Outlet />
 
-      <Dialog open={!!request} onOpenChange={(o) => (!o ? void dismissRequest() : null)}>
+      <Dialog open={!!request} onOpenChange={(o) => (!o ? closeRequestDialog() : null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>New delivery request</DialogTitle>
@@ -487,7 +518,7 @@ function PartnerLayout() {
                 >
                   Reject
                 </Button>
-                <Button className="flex-1" disabled={busy} onClick={() => respond(true)}>
+                <Button className="flex-1" disabled={busy || secondsLeft === 0} onClick={() => respond(true)}>
                   {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Accept
                 </Button>
