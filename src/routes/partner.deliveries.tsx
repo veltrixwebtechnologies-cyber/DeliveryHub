@@ -278,7 +278,11 @@ function Deliveries() {
                 label={vendor.shop_name ?? "Pickup location"}
                 from={from}
               />
-            ) : null}
+            ) : (
+              <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+                Pickup address is unavailable. Use “Call shop” to confirm the location.
+              </div>
+            )}
 
             {order?.items?.length ? (
               <div className="rounded-lg bg-secondary p-3">

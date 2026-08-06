@@ -10,7 +10,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { AppShell } from "@/components/delivery/AppShell";
-import { MapPanel } from "@/components/delivery/MapPanel";
+import { AddressNavigation, MapPanel } from "@/components/delivery/MapPanel";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
@@ -434,6 +434,10 @@ function PartnerLayout() {
 
   const order = request?.orders;
   const vendor = order?.vendors;
+  const requestHasVendorCoordinates = Number.isFinite(vendor?.latitude) && Number.isFinite(vendor?.longitude);
+  const requestFrom: [number, number] | null = Number.isFinite(partner.current_latitude) && Number.isFinite(partner.current_longitude)
+    ? [partner.current_latitude, partner.current_longitude!]
+    : null;
 
   return (
     <AppShell
@@ -496,19 +500,25 @@ function PartnerLayout() {
                 <p className="mt-2 font-semibold text-foreground">Drop · {order?.customer_name}</p>
                 <p className="text-muted-foreground">{order?.customer_address}</p>
               </div>
-              {vendor?.latitude ? (
+              {requestHasVendorCoordinates ? (
                 <MapPanel
                   lat={vendor.latitude}
                   lng={vendor.longitude}
                   label={vendor.shop_name}
                   height={160}
-                  from={
-                    partner.current_latitude
-                      ? [partner.current_latitude, partner.current_longitude!]
-                      : null
-                  }
+                  from={requestFrom}
                 />
-              ) : null}
+              ) : vendor?.address ? (
+                <AddressNavigation
+                  address={vendor.address}
+                  label={vendor.shop_name ?? "Pickup location"}
+                  from={requestFrom}
+                />
+              ) : (
+                <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+                  Pickup address is still loading. Use the shop contact button after accepting if needed.
+                </div>
+              )}
               <div className="flex gap-2">
                 <Button
                   variant="secondary"
