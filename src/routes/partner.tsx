@@ -379,7 +379,10 @@ function PartnerLayout() {
       // expire while a phone acquires a high-accuracy fix. The accepted
       // assignment is now available, so this update becomes its first tracked
       // location point.
-      void requestCurrentPosition();
+      // Refresh the shared partner cache after the first post-accept GPS
+      // write so the deliveries page can render the current origin instead of
+      // the coordinates that were cached before acceptance.
+      void requestCurrentPosition().then(() => refresh());
       toast.success("Delivery accepted");
       setRequest(null);
       navigate({ to: "/partner/deliveries" });
