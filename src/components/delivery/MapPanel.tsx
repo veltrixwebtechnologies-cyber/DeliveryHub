@@ -11,11 +11,18 @@ type Props = {
 };
 
 export function MapPanel({ lat, lng, label, from = null, height = 220 }: Props) {
+  const valid = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+  if (!valid) {
+    return <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">Location coordinates are not available yet. Use the address navigation link when available.</div>;
+  }
+  const direct = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${lat},${lng}`)}${from ? `&origin=${encodeURIComponent(`${from[0]},${from[1]}`)}` : ""}&travelmode=two-wheeler`;
   return (
     <div className="overflow-hidden rounded-xl border border-border">
       <iframe
         title={`Map – ${label}`}
         src={osmEmbed(lat, lng)}
+        allowFullScreen
+        referrerPolicy="no-referrer-when-downgrade"
         className="w-full bg-muted"
         style={{ height }}
         loading="lazy"
@@ -23,7 +30,7 @@ export function MapPanel({ lat, lng, label, from = null, height = 220 }: Props) 
       <div className="flex items-center justify-between gap-3 border-t border-border bg-card px-3 py-2">
         <span className="truncate text-xs text-muted-foreground">{label}</span>
         <Button asChild size="sm" variant="secondary">
-          <a href={osmDirections(from, [lat, lng])} target="_blank" rel="noreferrer">
+          <a href={direct || osmDirections(from, [lat, lng])} target="_blank" rel="noreferrer">
             <Navigation className="mr-1 h-3.5 w-3.5" /> Navigate
           </a>
         </Button>

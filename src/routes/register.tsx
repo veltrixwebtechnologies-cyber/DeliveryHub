@@ -212,6 +212,11 @@ function RegisterPage() {
 
   async function uploadDoc(docType: string, file: File, expiry?: string) {
     if (!user || !partner) return;
+    const allowed = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(file.type) || file.size > 10 * 1024 * 1024) {
+      toast.error("Upload a PDF/JPEG/PNG/WebP file under 10 MB");
+      return;
+    }
     setBusy(true);
     const ext = file.name.split(".").pop() ?? "jpg";
     const path = `${user.id}/${docType}-${Date.now()}.${ext}`;

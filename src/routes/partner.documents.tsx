@@ -59,6 +59,11 @@ function Documents() {
 
   async function upload(docType: string, file: File) {
     if (!partner) return;
+    const allowed = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(file.type) || file.size > 10 * 1024 * 1024) {
+      toast.error("Upload a PDF/JPEG/PNG/WebP file under 10 MB");
+      return;
+    }
     setBusy(docType);
     const ext = file.name.split(".").pop() ?? "jpg";
     const path = `${partner.user_id}/${docType}-${Date.now()}.${ext}`;

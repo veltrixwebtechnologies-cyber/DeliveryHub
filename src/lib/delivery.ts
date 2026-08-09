@@ -132,8 +132,11 @@ export function nextFlowStep(current: string) {
 }
 
 export function osmEmbed(lat: number, lng: number, zoomPad = 0.012) {
-  const bbox = [lng - zoomPad, lat - zoomPad, lng + zoomPad, lat + zoomPad].join(",");
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lng}`;
+  // Google’s no-key embed endpoint is more reliable inside partner portals
+  // than the OSM export iframe (which is intermittently blocked by browsers).
+  // Keep the function name for compatibility with existing callers.
+  const zoom = zoomPad <= 0.008 ? 16 : 15;
+  return `https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}&z=${zoom}&output=embed`;
 }
 
 export function osmDirections(
