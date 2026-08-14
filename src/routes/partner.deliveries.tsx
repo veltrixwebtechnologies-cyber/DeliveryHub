@@ -50,6 +50,7 @@ function Deliveries() {
   const [otp, setOtp] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const loadInFlightRef = useRef(false);
+  const completionInFlightRef = useRef(false);
   const refreshTimerRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
@@ -110,12 +111,13 @@ function Deliveries() {
   }, [partner?.id, load]);
 
   async function advance() {
-    if (!active) return;
+    if (!active || completionInFlightRef.current) return;
     const next = nextFlowStep(active.status);
     if (!next) return;
     setBusy(true);
 
     if (next.status === "delivered") {
+      completionInFlightRef.current = true;
       let proofType = "otp";
       let proofValue = otp.trim();
       if (photo) {
@@ -124,6 +126,7 @@ function Deliveries() {
           .from("delivery-docs")
           .upload(path, photo, { upsert: true });
         if (upErr) {
+          completionInFlightRef.current = false;
           setBusy(false);
           toast.error(upErr.message);
           return;
@@ -136,8 +139,21 @@ function Deliveries() {
         _proof_type: proofType,
         _proof_value: proofValue,
       });
+      completionInFlightRef.current = false;
       setBusy(false);
       if (error) {
+        const { data: latest } = await db
+          .from("delivery_assignments")
+          .select("status")
+          .eq("id", active.id)
+          .maybeSingle();
+        if (latest?.status === "delivered") {
+          toast.success("Delivery completed — earnings credited");
+          setOtp("");
+          setPhoto(null);
+          await load();
+          return;
+        }
         toast.error(error.message);
         return;
       }
@@ -331,6 +347,7 @@ function Deliveries() {
 
             {next ? (
               <Button
+                type="button"
                 className="w-full"
                 disabled={busy || (next.status === "delivered" && otp.length < 4 && !photo)}
                 onClick={advance}

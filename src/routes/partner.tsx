@@ -238,6 +238,17 @@ function PartnerLayout() {
         loadInFlight = false;
         return;
       }
+
+      // Realtime/server dispatch can be delayed or unavailable. This secure
+      // RPC atomically creates one eligible offer for this authenticated,
+      // approved online partner without exposing unassigned order data.
+      const { error: claimError } = await (db as any).rpc("claim_next_delivery_offer");
+      if (claimError && claimError.code !== "PGRST202") {
+        console.error("[delivery-assignments] offer claim failed", {
+          code: claimError.code,
+          message: claimError.message,
+        });
+      }
       const { data, error } = await db
         .from("delivery_assignments")
         // Keep the notification query independent from the orders relation.

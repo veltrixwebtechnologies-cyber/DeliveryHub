@@ -29,6 +29,10 @@ function PartnerDashboard() {
   const [today, setToday] = useState({ earnings: 0, deliveries: 0 });
   const [week, setWeek] = useState(0);
   const [active, setActive] = useState<any[]>([]);
+  const [performance, setPerformance] = useState({
+    total: 0, requests: 0, accepted: 0, cancelled: 0, late: 0,
+    distanceKm: 0, workingMinutes: 0,
+  });
 
   useEffect(() => {
     if (!partner) return;
@@ -36,16 +40,37 @@ function PartnerDashboard() {
 
     const load = async () => {
       const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-      const [{ data: todays }, { data: weeks }, { data: act }] = await Promise.all([
+      const [{ data: todays }, { data: weeks }, { data: act }, { data: assignmentStats }] = await Promise.all([
         db.from("delivery_earnings").select("amount").eq("partner_id", partner.id).gte("created_at", todayStart()),
         db.from("delivery_earnings").select("amount").eq("partner_id", partner.id).gte("created_at", weekAgo),
         db.from("delivery_assignments").select(`*, orders(${DELIVERY_ORDER_SELECT})`).eq("partner_id", partner.id).in("status", ACTIVE_ASSIGNMENT_STATUSES),
+        db.from("delivery_assignments").select("status,distance_km,accepted_at,delivered_at,created_at").eq("partner_id", partner.id),
       ]);
       const sum = (rows: any[] | null) => (rows ?? []).reduce((t, r) => t + Number(r.amount ?? 0), 0);
       if (cancelled) return;
       setToday({ earnings: sum(todays), deliveries: (todays ?? []).length });
       setWeek(sum(weeks));
       setActive((act ?? []).map(normalizeAssignment));
+      const rows = assignmentStats ?? [];
+      const completed = rows.filter((row: any) => row.status === "delivered");
+      const accepted = rows.filter((row: any) => !["pending", "requested", "rejected", "expired"].includes(row.status));
+      const cancelled = rows.filter((row: any) => row.status === "cancelled");
+      const todayMs = new Date(todayStart()).getTime();
+      const completedToday = completed.filter((row: any) => new Date(row.delivered_at ?? row.created_at).getTime() >= todayMs);
+      const workingMinutes = completedToday.reduce((total: number, row: any) => {
+        const start = new Date(row.accepted_at ?? row.created_at).getTime();
+        const end = new Date(row.delivered_at ?? row.created_at).getTime();
+        return total + Math.max(0, Math.round((end - start) / 60000));
+      }, 0);
+      setPerformance({
+        total: completed.length,
+        requests: rows.length,
+        accepted: accepted.length,
+        cancelled: cancelled.length,
+        late: Math.min(Number(partner.late_deliveries ?? 0), completed.length),
+        distanceKm: completedToday.reduce((total: number, row: any) => total + Number(row.distance_km ?? 0), 0),
+        workingMinutes,
+      });
       setLoading(false);
     };
 
@@ -59,9 +84,9 @@ function PartnerDashboard() {
 
   if (!partner) return null;
 
-  const acceptance = pct(partner.accepted_requests ?? 0, partner.total_requests ?? 0);
-  const onTime = pct((partner.total_deliveries ?? 0) - (partner.late_deliveries ?? 0), partner.total_deliveries ?? 0);
-  const completion = pct(partner.total_deliveries ?? 0, (partner.total_deliveries ?? 0) + (partner.cancelled_deliveries ?? 0));
+  const acceptance = pct(performance.accepted, performance.requests);
+  const onTime = pct(performance.total - performance.late, performance.total);
+  const completion = pct(performance.total, performance.total + performance.cancelled);
   const firstName = partner.full_name.split(" ")[0];
   const isBusy = active.length > 0;
 
@@ -91,7 +116,7 @@ function PartnerDashboard() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Today's earnings" value={INR(today.earnings)} hint={`${today.deliveries} completed today`} icon={<Wallet className="h-4 w-4" />} loading={loading} />
         <StatCard label="Last 7 days" value={INR(week)} hint="Keep your streak going" icon={<TrendingUp className="h-4 w-4" />} loading={loading} />
-        <StatCard label="Total deliveries" value={partner.total_deliveries ?? 0} hint="All-time completed" icon={<Package className="h-4 w-4" />} />
+        <StatCard label="Total deliveries" value={performance.total} hint="All-time completed" icon={<Package className="h-4 w-4" />} loading={loading} />
         <StatCard label="Partner rating" value={Number(partner.rating ?? 5).toFixed(2)} hint="Customer experience" icon={<Star className="h-4 w-4" />} />
       </div>
 
@@ -119,7 +144,7 @@ function PartnerDashboard() {
             <Metric label="Acceptance rate" value={acceptance} />
             <Metric label="On-time deliveries" value={onTime} />
             <Metric label="Completion rate" value={completion} />
-            <div className="grid grid-cols-2 gap-3 border-t border-border pt-4"><MiniMetric label="Working hours" value="0h 00m" /><MiniMetric label="Distance covered" value="0.0 km" /></div>
+            <div className="grid grid-cols-2 gap-3 border-t border-border pt-4"><MiniMetric label="Working hours" value={`${Math.floor(performance.workingMinutes / 60)}h ${String(performance.workingMinutes % 60).padStart(2, "0")}m`} /><MiniMetric label="Distance covered" value={`${performance.distanceKm.toFixed(1)} km`} /></div>
           </CardContent>
         </Card>
       </div>
