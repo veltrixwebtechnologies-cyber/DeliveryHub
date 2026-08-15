@@ -123,20 +123,28 @@ function AdminPage() {
       toast.error(error.message);
       return;
     }
-    await db.from("delivery_notifications").insert({
+    const { error: notificationError } = await db.from("delivery_notifications").insert({
       partner_id: selected.id,
       title: `Application ${status.replace(/_/g, " ")}`,
       body: note || null,
       kind: "application",
     });
+    if (notificationError) {
+      toast.warning("Application updated, but the partner notification could not be queued.");
+    }
     toast.success(`Partner ${status.replace(/_/g, " ")}`);
     setSelected(null);
     load();
   }
 
   async function reviewDoc(docId: string, status: "verified" | "rejected") {
-    await db.from("delivery_documents").update({ status }).eq("id", docId);
+    const { error } = await db.from("delivery_documents").update({ status }).eq("id", docId);
+    if (error) {
+      toast.error(`Could not update document: ${error.message}`);
+      return;
+    }
     setDocs((d) => d.map((x) => (x.id === docId ? { ...x, status } : x)));
+    toast.success(`Document ${status}`);
   }
 
   async function viewDoc(path: string) {
@@ -145,10 +153,14 @@ function AdminPage() {
   }
 
   async function markPaid(id: string) {
-    await db
+    const { error } = await db
       .from("delivery_payouts")
       .update({ status: "paid", paid_at: new Date().toISOString() })
       .eq("id", id);
+    if (error) {
+      toast.error(`Could not mark payout as paid: ${error.message}`);
+      return;
+    }
     toast.success("Payout marked as paid");
     load();
   }
