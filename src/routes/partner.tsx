@@ -1,14 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import {
-  Bike,
-  FileText,
-  LayoutDashboard,
-  Loader2,
-  Package,
-  Wallet,
-} from "lucide-react";
+import { Bike, FileText, LayoutDashboard, Loader2, Package, Wallet } from "lucide-react";
 import { AppShell } from "@/components/delivery/AppShell";
 import { AddressNavigation, MapPanel } from "@/components/delivery/MapPanel";
 import { Button } from "@/components/ui/button";
@@ -69,19 +62,47 @@ function PartnerLayout() {
   const [request, setRequest] = useState<RequestRow | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
+  const [lowPowerMode, setLowPowerMode] = useState(false);
   const watchRef = useRef<number | null>(null);
   const locationErrorShownRef = useRef(false);
+  const lastActivityRef = useRef(Date.now());
+  const offlineWriteRef = useRef(false);
   const shownNotificationIdsRef = useRef(new Set<string>());
   const shownNotificationKeysRef = useRef(new Set<string>());
+
+  const markOffline = useCallback(
+    async (reason: string) => {
+      if (!partner || partner.availability !== "online" || offlineWriteRef.current) return;
+      offlineWriteRef.current = true;
+      const { error: rpcError } = await db.rpc("partner_go_offline");
+      const error =
+        rpcError?.code === "PGRST202"
+          ? (
+              await db
+                .from("delivery_partners")
+                .update({ availability: "offline" })
+                .eq("id", partner.id)
+            ).error
+          : rpcError;
+      offlineWriteRef.current = false;
+      if (!error) {
+        setRequest(null);
+        toast.info(`You are offline${reason ? `: ${reason}` : ""}.`);
+        await refresh();
+      }
+    },
+    [partner?.availability, partner?.id, refresh],
+  );
 
   const submitPosition = useCallback(async (pos: GeolocationPosition) => {
     // Desktop/browser geolocation can report a very coarse accuracy value.
     // Keep the coordinates, but omit an unusable accuracy value so older
     // deployed RPCs do not reject an otherwise valid location update.
     const reportedAccuracy = pos.coords.accuracy;
-    const accuracy = Number.isFinite(reportedAccuracy) && reportedAccuracy > 0 && reportedAccuracy <= 2000
-      ? reportedAccuracy
-      : null;
+    const accuracy =
+      Number.isFinite(reportedAccuracy) && reportedAccuracy > 0 && reportedAccuracy <= 2000
+        ? reportedAccuracy
+        : null;
     try {
       const { error } = await db.rpc("submit_partner_location", {
         _latitude: pos.coords.latitude,
@@ -109,21 +130,27 @@ function PartnerLayout() {
       return false;
     }
     locationErrorShownRef.current = false;
+    lastActivityRef.current = Date.now();
     return true;
   }, []);
 
-  const handlePositionError = useCallback((error: GeolocationPositionError) => {
-    console.error("[delivery-location] browser geolocation failed", error);
-    if (!locationErrorShownRef.current) {
-      locationErrorShownRef.current = true;
-      const message = error.code === 1
-        ? "Allow location access to receive delivery requests."
-        : error.code === 3
-          ? "Location request timed out. Keep GPS enabled and try again."
-          : "Unable to read your location. Keep GPS enabled and try again.";
-      toast.error(message);
-    }
-  }, []);
+  const handlePositionError = useCallback(
+    (error: GeolocationPositionError) => {
+      console.error("[delivery-location] browser geolocation failed", error);
+      if (error.code === 1 || error.code === 2) void markOffline("GPS is unavailable");
+      if (!locationErrorShownRef.current) {
+        locationErrorShownRef.current = true;
+        const message =
+          error.code === 1
+            ? "Allow location access to receive delivery requests."
+            : error.code === 3
+              ? "Location request timed out. Keep GPS enabled and try again."
+              : "Unable to read your location. Keep GPS enabled and try again.";
+        toast.error(message);
+      }
+    },
+    [markOffline],
+  );
 
   const requestCurrentPosition = useCallback((): Promise<boolean> => {
     if (!("geolocation" in navigator)) {
@@ -161,6 +188,36 @@ function PartnerLayout() {
   }, [handlePositionError, submitPosition]);
 
   useEffect(() => {
+    if (!partner) return;
+    type Battery = {
+      level: number;
+      charging: boolean;
+      addEventListener: (event: string, listener: () => void) => void;
+      removeEventListener: (event: string, listener: () => void) => void;
+    };
+    const batteryApi = navigator as Navigator & { getBattery?: () => Promise<Battery> };
+    if (!batteryApi.getBattery) return;
+    let battery: Battery | null = null;
+    const syncBattery = () => {
+      const low = !!battery && !battery.charging && battery.level <= 0.15;
+      setLowPowerMode(low);
+      if (low) toast.warning("Battery is low. Power-saving location updates are enabled.");
+    };
+    void batteryApi.getBattery().then((value) => {
+      battery = value;
+      syncBattery();
+      value.addEventListener("levelchange", syncBattery);
+      value.addEventListener("chargingchange", syncBattery);
+    });
+    return () => {
+      if (battery) {
+        battery.removeEventListener("levelchange", syncBattery);
+        battery.removeEventListener("chargingchange", syncBattery);
+      }
+    };
+  }, [partner?.id]);
+
+  useEffect(() => {
     if (loading) return;
     if (!user) navigate({ to: "/auth" });
     else if (!partner) navigate({ to: "/register" });
@@ -176,21 +233,56 @@ function PartnerLayout() {
     // without waiting for movement or a browser watch callback.
     requestCurrentPosition();
 
-    watchRef.current = navigator.geolocation.watchPosition(
-      submitPosition,
-      handlePositionError,
-      { enableHighAccuracy: false, maximumAge: 30_000, timeout: 30_000 },
-    );
+    watchRef.current = navigator.geolocation.watchPosition(submitPosition, handlePositionError, {
+      enableHighAccuracy: false,
+      maximumAge: 30_000,
+      timeout: 30_000,
+    });
 
-    const refreshLocation = window.setInterval(() => {
-      requestCurrentPosition();
-    }, 45_000);
+    const refreshLocation = window.setInterval(
+      () => {
+        requestCurrentPosition();
+      },
+      lowPowerMode ? 120_000 : 45_000,
+    );
 
     return () => {
       if (watchRef.current !== null) navigator.geolocation.clearWatch(watchRef.current);
       window.clearInterval(refreshLocation);
     };
-  }, [partner, requestCurrentPosition, submitPosition, handlePositionError]);
+  }, [partner, requestCurrentPosition, submitPosition, handlePositionError, lowPowerMode]);
+
+  // Keep availability truthful without polling aggressively. A browser/network
+  // disconnect, revoked GPS permission, or ten minutes without a heartbeat
+  // takes the rider offline so new work is not dispatched to a dead session.
+  useEffect(() => {
+    if (!partner || partner.availability !== "online") return;
+    lastActivityRef.current = Date.now();
+    const touch = () => {
+      lastActivityRef.current = Date.now();
+    };
+    const onOffline = () => void markOffline("internet connection lost");
+    const onOnline = () => {
+      lastActivityRef.current = Date.now();
+      toast.info("Connection restored. Location will refresh shortly.");
+    };
+    window.addEventListener("pointerdown", touch, { passive: true });
+    window.addEventListener("keydown", touch, { passive: true });
+    window.addEventListener("offline", onOffline);
+    window.addEventListener("online", onOnline);
+    const timer = window.setInterval(() => {
+      if (Date.now() - lastActivityRef.current >= 10 * 60 * 1000) {
+        void markOffline("inactive for 10 minutes");
+      }
+    }, 60_000);
+    return () => {
+      window.removeEventListener("pointerdown", touch);
+      window.removeEventListener("keydown", touch);
+      window.removeEventListener("offline", onOffline);
+      window.removeEventListener("online", onOnline);
+      window.clearInterval(timer);
+    };
+  }, [partner?.availability, partner?.id, markOffline]);
 
   // Incoming request realtime + initial fetch
   useEffect(() => {
@@ -231,7 +323,13 @@ function PartnerLayout() {
         .from("delivery_assignments")
         .select("id")
         .eq("partner_id", partner.id)
-        .in("status", ["accepted", "navigating_to_vendor", "reached_vendor", "picked_up", "out_for_delivery"])
+        .in("status", [
+          "accepted",
+          "navigating_to_vendor",
+          "reached_vendor",
+          "picked_up",
+          "out_for_delivery",
+        ])
         .limit(1);
       if (!activeError && activeAssignments?.length) {
         setRequest(null);
@@ -379,9 +477,10 @@ function PartnerLayout() {
         return;
       }
       if (!data) {
-        const message = new Date(request.expires_at).getTime() <= Date.now()
-          ? "This delivery request expired before it could be accepted. Stay online for the next request."
-          : "Another delivery partner accepted this request first.";
+        const message =
+          new Date(request.expires_at).getTime() <= Date.now()
+            ? "This delivery request expired before it could be accepted. Stay online for the next request."
+            : "Another delivery partner accepted this request first.";
         toast.info(message);
         setRequest(null);
         return;
@@ -418,10 +517,17 @@ function PartnerLayout() {
       toast.error("Your application is still under review.");
       return;
     }
-    if (!on) closeRequestDialog();
+    if (on && typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error("Reconnect to the internet before going online.");
+      return;
+    }
+    if (!on) {
+      await markOffline("you chose to go offline");
+      return;
+    }
     const { error } = await db
       .from("delivery_partners")
-      .update({ availability: on ? "online" : "offline" })
+      .update({ availability: "online" })
       .eq("id", partner.id);
     if (error) {
       console.error("[delivery-availability] update failed", error);
@@ -432,6 +538,7 @@ function PartnerLayout() {
       // Every online session starts with a fresh location attempt. This keeps
       // an old location timestamp from carrying over after going offline.
       locationErrorShownRef.current = false;
+      lastActivityRef.current = Date.now();
     }
     await refresh();
     if (on && "geolocation" in navigator) requestCurrentPosition();
@@ -448,10 +555,12 @@ function PartnerLayout() {
 
   const order = request?.orders;
   const vendor = order?.vendors;
-  const requestHasVendorCoordinates = Number.isFinite(vendor?.latitude) && Number.isFinite(vendor?.longitude);
-  const requestFrom: [number, number] | null = Number.isFinite(partner.current_latitude) && Number.isFinite(partner.current_longitude)
-    ? [partner.current_latitude, partner.current_longitude!]
-    : null;
+  const requestHasVendorCoordinates =
+    Number.isFinite(vendor?.latitude) && Number.isFinite(vendor?.longitude);
+  const requestFrom: [number, number] | null =
+    Number.isFinite(partner.current_latitude) && Number.isFinite(partner.current_longitude)
+      ? [partner.current_latitude, partner.current_longitude!]
+      : null;
 
   return (
     <AppShell
@@ -489,6 +598,12 @@ function PartnerLayout() {
       ) : null}
 
       <Outlet />
+      {lowPowerMode ? (
+        <div className="mb-4 rounded-xl border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          Low battery: power-saving mode is active. Location refreshes less often until you charge
+          your phone.
+        </div>
+      ) : null}
 
       <Dialog open={!!request} onOpenChange={(o) => (!o ? closeRequestDialog() : null)}>
         <DialogContent className="sm:max-w-md">
@@ -498,9 +613,7 @@ function PartnerLayout() {
           {request ? (
             <div className="space-y-4">
               <Progress value={(secondsLeft / 60) * 100} />
-              <p className="text-center text-sm text-muted-foreground">
-                {secondsLeft}s to respond
-              </p>
+              <p className="text-center text-sm text-muted-foreground">{secondsLeft}s to respond</p>
               <div className="grid grid-cols-3 gap-2 text-center">
                 <Info label="Earning" value={INR(request.estimated_earning)} />
                 <Info label="Distance" value={`${Number(request.distance_km).toFixed(1)} km`} />
@@ -530,7 +643,8 @@ function PartnerLayout() {
                 />
               ) : (
                 <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-                  Pickup address is still loading. Use the shop contact button after accepting if needed.
+                  Pickup address is still loading. Use the shop contact button after accepting if
+                  needed.
                 </div>
               )}
               <div className="flex gap-2">
@@ -542,7 +656,11 @@ function PartnerLayout() {
                 >
                   Reject
                 </Button>
-                <Button className="flex-1" disabled={busy || secondsLeft === 0} onClick={() => respond(true)}>
+                <Button
+                  className="flex-1"
+                  disabled={busy || secondsLeft === 0}
+                  onClick={() => respond(true)}
+                >
                   {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Accept
                 </Button>

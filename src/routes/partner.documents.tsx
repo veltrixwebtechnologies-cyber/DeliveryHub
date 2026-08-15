@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Check, FileText, Upload } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/delivery/StatusBadge";
 import { supabase } from "@/integrations/supabase/client";
 import { db } from "@/lib/db";
@@ -46,6 +47,7 @@ function Documents() {
   const { partner } = usePartner();
   const [docs, setDocs] = useState<any[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [expiryByType, setExpiryByType] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (!partner) return;
@@ -57,11 +59,15 @@ function Documents() {
     load();
   }, [load]);
 
-  async function upload(docType: string, file: File) {
+  async function upload(docType: string, file: File, expiryDate?: string) {
     if (!partner) return;
     const allowed = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
     if (!allowed.includes(file.type) || file.size > 10 * 1024 * 1024) {
       toast.error("Upload a PDF/JPEG/PNG/WebP file under 10 MB");
+      return;
+    }
+    if (expiryDate && new Date(`${expiryDate}T23:59:59`).getTime() <= Date.now()) {
+      toast.error("Document expiry date must be in the future");
       return;
     }
     setBusy(docType);
@@ -75,10 +81,18 @@ function Documents() {
       toast.error(upErr.message);
       return;
     }
-    const { error } = await db.from("delivery_documents").upsert(
-      { partner_id: partner.id, doc_type: docType, file_path: path, status: "pending" },
-      { onConflict: "partner_id,doc_type" },
-    );
+    const { error } = await db
+      .from("delivery_documents")
+      .upsert(
+        {
+          partner_id: partner.id,
+          doc_type: docType,
+          file_path: path,
+          status: "pending",
+          expiry_date: expiryDate || null,
+        },
+        { onConflict: "partner_id,doc_type" },
+      );
     setBusy(null);
     if (error) {
       toast.error(error.message);
@@ -89,9 +103,7 @@ function Documents() {
   }
 
   async function view(path: string) {
-    const { data, error } = await supabase.storage
-      .from("delivery-docs")
-      .createSignedUrl(path, 120);
+    const { data, error } = await supabase.storage.from("delivery-docs").createSignedUrl(path, 120);
     if (error || !data) {
       toast.error("Could not open the file");
       return;
@@ -120,18 +132,24 @@ function Documents() {
         <CardContent className="divide-y divide-border">
           {relevant.map((type) => {
             const doc = docs.find((d) => d.doc_type === type);
+            const expiry = doc?.expiry_date ? new Date(`${doc.expiry_date}T23:59:59`) : null;
+            const daysLeft = expiry ? Math.ceil((expiry.getTime() - Date.now()) / 86400000) : null;
             return (
               <div key={type} className="flex flex-wrap items-center gap-3 py-3">
                 <span className="grid h-9 w-9 place-items-center rounded-lg bg-secondary text-secondary-foreground">
                   {doc ? <Check className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-foreground">
-                    {DOC_LABELS[type] ?? type}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-sm font-medium text-foreground">{DOC_LABELS[type] ?? type}</p>
+                  <p
+                    className={`text-xs ${daysLeft !== null && daysLeft <= 30 ? "text-destructive" : "text-muted-foreground"}`}
+                  >
                     {doc?.reviewer_note ??
-                      (doc?.expiry_date ? `Expires ${doc.expiry_date}` : "Required")}
+                      (daysLeft === null
+                        ? "Required"
+                        : daysLeft < 0
+                          ? `Expired ${doc.expiry_date}`
+                          : `Expires ${doc.expiry_date} (${daysLeft} days)`)}
                   </p>
                 </div>
                 <StatusBadge status={doc?.status ?? "missing"} kind="plain" />
@@ -140,6 +158,15 @@ function Documents() {
                     View
                   </Button>
                 ) : null}
+                <Input
+                  type="date"
+                  className="w-[150px]"
+                  value={expiryByType[type] ?? doc?.expiry_date ?? ""}
+                  onChange={(e) =>
+                    setExpiryByType((current) => ({ ...current, [type]: e.target.value }))
+                  }
+                  aria-label={`${DOC_LABELS[type] ?? type} expiry date`}
+                />
                 <label className="cursor-pointer">
                   <Button size="sm" variant="ghost" asChild disabled={busy === type}>
                     <span>
@@ -153,7 +180,7 @@ function Documents() {
                     className="hidden"
                     onChange={(e) => {
                       const f = e.target.files?.[0];
-                      if (f) upload(type, f);
+                      if (f) upload(type, f, expiryByType[type] ?? doc?.expiry_date ?? undefined);
                     }}
                   />
                 </label>
