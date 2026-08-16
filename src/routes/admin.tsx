@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Bike, Package, ShieldCheck, Users, Wallet } from "lucide-react";
+import { Bike, Package, ShieldCheck, Users, Wallet, RefreshCw, History, AlertTriangle } from "lucide-react";
 import { AppShell, EmptyState } from "@/components/delivery/AppShell";
 import { StatCard } from "@/components/delivery/StatCard";
 import { StatusBadge } from "@/components/delivery/StatusBadge";
@@ -53,13 +53,17 @@ function AdminPage() {
   const [partners, setPartners] = useState<any[]>([]);
   const [live, setLive] = useState<any[]>([]);
   const [payouts, setPayouts] = useState<any[]>([]);
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [exceptions, setExceptions] = useState<any[]>([]);
+  const [timeline, setTimeline] = useState<any[]>([]);
+  const [selectedLive, setSelectedLive] = useState<any | null>(null);
   const [selected, setSelected] = useState<any | null>(null);
   const [docs, setDocs] = useState<any[]>([]);
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const [{ data: p }, { data: l }, { data: po }] = await Promise.all([
+    const [{ data: p }, { data: l }, { data: po }, { data: wr }, { data: ex }] = await Promise.all([
       db.from("delivery_partners").select("*").order("created_at", { ascending: false }),
       db
         .from("delivery_assignments")
@@ -70,10 +74,22 @@ function AdminPage() {
         .from("delivery_payouts")
         .select("*, delivery_partners(full_name)")
         .order("created_at", { ascending: false }),
+      db
+        .from("delivery_withdrawal_requests")
+        .select("id,partner_id,amount,status,requested_at,processed_at,admin_note,delivery_partners(full_name)")
+        .order("requested_at", { ascending: false })
+        .limit(100),
+      db
+        .from("delivery_exceptions")
+        .select("*, delivery_partners(full_name)")
+        .order("created_at", { ascending: false })
+        .limit(100),
     ]);
     setPartners(p ?? []);
     setLive((l ?? []).map(normalizeAssignment));
     setPayouts(po ?? []);
+    setWithdrawals(wr ?? []);
+    setExceptions(ex ?? []);
     setLoading(false);
   }, []);
 
@@ -162,6 +178,43 @@ function AdminPage() {
       return;
     }
     toast.success("Payout marked as paid");
+    load();
+  }
+
+  async function reassign(assignmentId: string) {
+    const { data, error } = await db.rpc("admin_reassign_delivery", { _assignment_id: assignmentId });
+    if (error) {
+      toast.error(`Could not reassign delivery: ${error.message}`);
+      return;
+    }
+    toast.success(data ? "Delivery reassigned and re-dispatched" : "Delivery closed; no eligible partner found");
+    setSelectedLive(null);
+    setTimeline([]);
+    load();
+  }
+
+  async function openTimeline(assignment: any) {
+    setSelectedLive(assignment);
+    const { data, error } = await db
+      .from("delivery_tracking")
+      .select("*")
+      .eq("assignment_id", assignment.id)
+      .order("created_at", { ascending: true });
+    if (error) toast.error(`Could not load timeline: ${error.message}`);
+    setTimeline(data ?? []);
+  }
+
+  async function resolveException(id: string, status: "in_review" | "resolved" | "dismissed") {
+    const { error } = await db.rpc("resolve_delivery_exception", {
+      _exception_id: id,
+      _status: status,
+      _note: null,
+    });
+    if (error) {
+      toast.error(`Could not update exception: ${error.message}`);
+      return;
+    }
+    toast.success(`Exception marked ${status.replace("_", " ")}`);
     load();
   }
 
@@ -262,6 +315,8 @@ function AdminPage() {
             <TabsTrigger value="approvals">Approvals</TabsTrigger>
             <TabsTrigger value="partners">All partners</TabsTrigger>
             <TabsTrigger value="live">Live deliveries</TabsTrigger>
+            <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
+            <TabsTrigger value="withdrawals">Withdrawals</TabsTrigger>
             <TabsTrigger value="payouts">Payouts</TabsTrigger>
           </TabsList>
 
@@ -289,7 +344,8 @@ function AdminPage() {
                         <TableHead>Order</TableHead>
                         <TableHead>Shop</TableHead>
                         <TableHead>Partner</TableHead>
-                        <TableHead>Status</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -301,12 +357,55 @@ function AdminPage() {
                           <TableCell>
                             <StatusBadge status={a.status} />
                           </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button size="sm" variant="secondary" onClick={() => openTimeline(a)}>
+                                <History className="mr-1 h-3.5 w-3.5" /> Timeline
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => void reassign(a.id)}>
+                                <RefreshCw className="mr-1 h-3.5 w-3.5" /> Reassign
+                              </Button>
+                            </div>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </CardContent>
               </Card>
+            )}
+          </TabsContent>
+
+          <TabsContent value="exceptions" className="mt-4">
+            {exceptions.length === 0 ? (
+              <EmptyState title="No delivery exceptions" description="Rider and admin exceptions will appear here." />
+            ) : (
+              <Card>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader><TableRow><TableHead>Partner</TableHead><TableHead>Reason</TableHead><TableHead>Status</TableHead><TableHead>Date</TableHead><TableHead /></TableRow></TableHeader>
+                    <TableBody>{exceptions.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell>{item.delivery_partners?.full_name ?? "—"}</TableCell>
+                        <TableCell className="capitalize">{String(item.reason).replaceAll("_", " ")}</TableCell>
+                        <TableCell><StatusBadge status={item.resolution_status} kind="plain" /></TableCell>
+                        <TableCell>{new Date(item.created_at).toLocaleString()}</TableCell>
+                        <TableCell className="text-right">
+                          {item.resolution_status === "open" ? <Button size="sm" onClick={() => void resolveException(item.id, "resolved")}><AlertTriangle className="mr-1 h-3.5 w-3.5" /> Resolve</Button> : null}
+                        </TableCell>
+                      </TableRow>
+                    ))}</TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          <TabsContent value="withdrawals" className="mt-4">
+            {withdrawals.length === 0 ? (
+              <EmptyState title="No withdrawal requests" description="Partner withdrawal requests will appear here." />
+            ) : (
+              <Card><CardContent className="p-0"><Table><TableHeader><TableRow><TableHead>Partner</TableHead><TableHead>Requested</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader><TableBody>{withdrawals.map((item) => <TableRow key={item.id}><TableCell>{item.delivery_partners?.full_name ?? "—"}</TableCell><TableCell>{new Date(item.requested_at).toLocaleString()}</TableCell><TableCell><StatusBadge status={item.status} kind="plain" /></TableCell><TableCell className="text-right">{INR(item.amount)}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
             )}
           </TabsContent>
 
@@ -353,6 +452,16 @@ function AdminPage() {
             )}
           </TabsContent>
         </Tabs>
+
+        {selectedLive ? (
+          <Card>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
+              <div><CardTitle className="text-base">Delivery timeline</CardTitle><p className="text-sm text-muted-foreground">{selectedLive.orders?.order_code ?? selectedLive.id}</p></div>
+              <Button size="sm" variant="ghost" onClick={() => { setSelectedLive(null); setTimeline([]); }}>Close</Button>
+            </CardHeader>
+            <CardContent>{timeline.length === 0 ? <p className="text-sm text-muted-foreground">No tracking events recorded.</p> : <div className="space-y-3">{timeline.map((event) => <div key={event.id} className="flex items-start gap-3 border-l-2 border-primary/30 pl-4"><div><p className="text-sm font-medium capitalize">{String(event.status).replaceAll("_", " ")}</p><p className="text-xs text-muted-foreground">{event.note ?? "—"} · {event.actor_role ?? "system"} · {new Date(event.created_at).toLocaleString()}</p></div></div>)}</div>}</CardContent>
+          </Card>
+        ) : null}
       </div>
     </AppShell>
   );

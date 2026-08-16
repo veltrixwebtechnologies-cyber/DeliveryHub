@@ -42,7 +42,7 @@ function PartnerDashboard() {
 
   useEffect(() => {
     if (!partner) return;
-    let cancelled = false;
+    let loadCancelled = false;
 
     const load = async () => {
       const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
@@ -70,7 +70,7 @@ function PartnerDashboard() {
         ]);
       const sum = (rows: any[] | null) =>
         (rows ?? []).reduce((t, r) => t + Number(r.amount ?? 0), 0);
-      if (cancelled) return;
+      if (loadCancelled) return;
       setToday({ earnings: sum(todays), deliveries: (todays ?? []).length });
       setWeek(sum(weeks));
       setActive((act ?? []).map(normalizeAssignment));
@@ -79,7 +79,7 @@ function PartnerDashboard() {
       const accepted = rows.filter(
         (row: any) => !["pending", "requested", "rejected", "expired"].includes(row.status),
       );
-      const cancelled = rows.filter((row: any) => row.status === "cancelled");
+      const cancelledRows = rows.filter((row: any) => row.status === "cancelled");
       const todayMs = new Date(todayStart()).getTime();
       const completedToday = completed.filter(
         (row: any) => new Date(row.delivered_at ?? row.created_at).getTime() >= todayMs,
@@ -93,7 +93,7 @@ function PartnerDashboard() {
         total: completed.length,
         requests: rows.length,
         accepted: accepted.length,
-        cancelled: cancelled.length,
+        cancelled: cancelledRows.length,
         late: Math.min(Number(partner.late_deliveries ?? 0), completed.length),
         distanceKm: completedToday.reduce(
           (total: number, row: any) => total + Number(row.distance_km ?? 0),
@@ -107,7 +107,7 @@ function PartnerDashboard() {
     void load();
     const refresh = window.setInterval(() => void load(), 5000);
     return () => {
-      cancelled = true;
+      loadCancelled = true;
       window.clearInterval(refresh);
     };
   }, [partner?.id]);

@@ -100,13 +100,24 @@ export function useIsAdmin() {
     queryKey: ["is-admin", user?.id],
     enabled: !!user,
     queryFn: async () => {
+      // Prefer the SECURITY DEFINER role helper. It avoids exposing a direct
+      // user_roles REST read and remains valid when production RLS differs
+      // from the local schema.
+      const { data: roleCheck, error: roleError } = await (supabase as any).rpc("has_role", {
+        _user_id: user!.id,
+        _role: "admin",
+      });
+      if (!roleError) return roleCheck === true;
+
+      // Compatibility fallback for older projects that have not deployed the
+      // public helper yet.
       const { data, error } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", user!.id)
         .eq("role", "admin")
         .maybeSingle();
-      if (error) throw error;
+      if (error) throw roleError ?? error;
       return !!data;
     },
   });

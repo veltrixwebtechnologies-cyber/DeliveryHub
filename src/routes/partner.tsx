@@ -373,6 +373,16 @@ function PartnerLayout() {
         return;
       }
 
+      if (
+        !["pending", "requested"].includes(assignment.status) ||
+        !assignment.expires_at ||
+        new Date(assignment.expires_at).getTime() <= Date.now()
+      ) {
+        setRequest(null);
+        loadInFlight = false;
+        return;
+      }
+
       // Order details are supplemental to the alert. If this relation query
       // is blocked by an orders RLS issue, the partner can still see and act
       // on the incoming assignment.

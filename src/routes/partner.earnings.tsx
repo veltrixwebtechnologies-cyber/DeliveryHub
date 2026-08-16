@@ -72,9 +72,9 @@ function Earnings() {
           .maybeSingle(),
         db
           .from("delivery_withdrawal_requests")
-          .select("id,amount,status,created_at,processed_at")
+          .select("id,amount,status,requested_at")
           .eq("partner_id", partner.id)
-          .order("created_at", { ascending: false })
+          .order("requested_at", { ascending: false })
           .limit(20),
       ]);
       setEarnings(e ?? []);
@@ -88,6 +88,15 @@ function Earnings() {
   async function requestWithdrawal() {
     const amount = Number(withdrawAmount);
     if (!Number.isFinite(amount) || amount <= 0) return;
+    const available = Number(wallet?.available_balance ?? 0);
+    if (amount > available) {
+      toast.info(
+        available > 0
+          ? `You can request up to ${INR(available)} right now.`
+          : "Your earnings are still pending settlement. Withdrawals will be enabled after settlement.",
+      );
+      return;
+    }
     setWithdrawBusy(true);
     const { data, error } = await db.rpc("request_delivery_withdrawal", { _amount: amount });
     setWithdrawBusy(false);
@@ -97,7 +106,7 @@ function Earnings() {
     }
     setWithdrawAmount("");
     setWithdrawals((current) => [
-      { id: data, amount, status: "requested", created_at: new Date().toISOString() },
+      { id: data, amount, status: "requested", requested_at: new Date().toISOString() },
       ...current,
     ]);
     toast.success("Withdrawal request submitted.");
@@ -190,6 +199,7 @@ function Earnings() {
               type="number"
               min="1"
               step="0.01"
+              max={wallet?.available_balance ?? 0}
               placeholder="Amount"
               value={withdrawAmount}
               onChange={(e) => setWithdrawAmount(e.target.value)}
@@ -197,16 +207,24 @@ function Earnings() {
             <Button
               type="button"
               onClick={() => void requestWithdrawal()}
-              disabled={withdrawBusy || !withdrawAmount}
+              disabled={
+                withdrawBusy ||
+                !withdrawAmount ||
+                Number(withdrawAmount) <= 0 ||
+                Number(withdrawAmount) > Number(wallet?.available_balance ?? 0)
+              }
             >
               {withdrawBusy ? "Requesting…" : "Request payout"}
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground">
+            Only your available balance can be withdrawn. Pending earnings are settled weekly.
+          </p>
           {withdrawals.length ? (
             <div className="divide-y divide-border rounded-lg border border-border text-sm">
               {withdrawals.slice(0, 5).map((w) => (
                 <div key={w.id} className="flex items-center justify-between px-3 py-2">
-                  <span>{new Date(w.created_at).toLocaleDateString()}</span>
+                  <span>{new Date(w.requested_at ?? w.created_at).toLocaleDateString()}</span>
                   <span>
                     {INR(w.amount)} · <span className="capitalize">{w.status}</span>
                   </span>
