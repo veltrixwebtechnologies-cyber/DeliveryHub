@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- delivery relations are schema-version compatible. */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -289,7 +288,7 @@ function Deliveries() {
   const dropping = active?.status === "out_for_delivery";
   const from: [number, number] | null =
     Number.isFinite(partner.current_latitude) && Number.isFinite(partner.current_longitude)
-      ? [partner.current_latitude, partner.current_longitude!]
+      ? [partner.current_latitude!, partner.current_longitude!]
       : null;
   const hasCustomerCoordinates =
     Number.isFinite(order?.customer_latitude) && Number.isFinite(order?.customer_longitude);

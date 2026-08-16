@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- dashboard aggregates legacy Supabase response shapes. */
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRight, Bike, Clock3, MapPin, Package, Star, TrendingUp, Wallet } from "lucide-react";

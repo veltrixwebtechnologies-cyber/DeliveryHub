@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- dispatch fallback supports mixed deployed RPC payloads. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -301,17 +300,19 @@ function PartnerLayout() {
         .order("created_at", { ascending: false })
         .limit(5);
       if (!notificationError && notifications?.length) {
-        const unseen = notifications.filter((notification) => {
-          const key = `${notification.title}|${notification.body ?? ""}`;
-          if (shownNotificationKeysRef.current.has(key)) return false;
-          shownNotificationKeysRef.current.add(key);
-          return !shownNotificationIdsRef.current.has(notification.id);
-        });
-        unseen.forEach((notification) => {
+        const unseen = notifications.filter(
+          (notification: { id: string; title: string; body: string | null }) => {
+            const key = `${notification.title}|${notification.body ?? ""}`;
+            if (shownNotificationKeysRef.current.has(key)) return false;
+            shownNotificationKeysRef.current.add(key);
+            return !shownNotificationIdsRef.current.has(notification.id);
+          },
+        );
+        unseen.forEach((notification: (typeof notifications)[number]) => {
           shownNotificationIdsRef.current.add(notification.id);
           toast.info(notification.title, { description: notification.body ?? undefined });
         });
-        const ids = notifications.map((notification) => notification.id);
+        const ids = notifications.map((notification: { id: string }) => notification.id);
         await db.from("delivery_notifications").update({ is_read: true }).in("id", ids);
       }
 
@@ -570,7 +571,7 @@ function PartnerLayout() {
     Number.isFinite(vendor?.latitude) && Number.isFinite(vendor?.longitude);
   const requestFrom: [number, number] | null =
     Number.isFinite(partner.current_latitude) && Number.isFinite(partner.current_longitude)
-      ? [partner.current_latitude, partner.current_longitude!]
+      ? [partner.current_latitude!, partner.current_longitude!]
       : null;
 
   return (

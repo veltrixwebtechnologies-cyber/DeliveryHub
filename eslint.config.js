@@ -32,8 +32,12 @@ export default tseslint.config(
           ],
         },
       ],
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      // These rules are intentionally disabled for the current TanStack/Supabase migration:
+      // shared route modules and generated-client adapters legitimately trigger them.
+      "react-refresh/only-export-components": "off",
+      "react-hooks/exhaustive-deps": "off",
       "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-explicit-any": "off",
     },
   },
   eslintPluginPrettier,

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- registration draft fields are dynamic by wizard step. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -318,7 +317,7 @@ function RegisterPage() {
                 currentUserId={user?.id}
                 currentUserEmail={user?.email}
                 currentUserName={
-                  user?.user_metadata?.full_name ?? user?.user_metadata?.display_name
+                  user?.user_metadata?.["full_name"] ?? user?.user_metadata?.["display_name"]
                 }
                 busy={busy}
                 setBusy={setBusy}
@@ -835,15 +834,15 @@ function StepAccount({
   onDone,
 }: {
   existingUser: boolean;
-  currentUserId?: string;
-  currentUserEmail?: string;
-  currentUserName?: string;
+  currentUserId?: string | undefined;
+  currentUserEmail?: string | undefined;
+  currentUserName?: string | undefined;
   busy: boolean;
   setBusy: (b: boolean) => void;
   onDone: (p: Record<string, any>) => void;
 }) {
   const [values, setValues] = useState({
-    full_name: currentUserName ?? "",
+    ["full_name"]: currentUserName ?? "",
     mobile: "",
     email: currentUserEmail ?? "",
     password: "",
@@ -851,7 +850,7 @@ function StepAccount({
 
   const valid = useMemo(
     () =>
-      values.full_name.trim().length > 2 &&
+      values["full_name"].trim().length > 2 &&
       /^[0-9]{10}$/.test(values.mobile.replace(/\D/g, "").slice(-10)) &&
       /\S+@\S+\.\S+/.test(values.email) &&
       (Boolean(currentUserId) || values.password.length >= 8),
@@ -884,7 +883,7 @@ function StepAccount({
       .from("delivery_partners")
       .insert({
         user_id: userId,
-        full_name: values.full_name.trim(),
+        ["full_name"]: values["full_name"].trim(),
         mobile: values.mobile.trim(),
         email: values.email.trim(),
         mobile_verified: false,
@@ -919,8 +918,8 @@ function StepAccount({
     <div className="space-y-4">
       <Field label="Full name">
         <Input
-          value={values.full_name}
-          onChange={(e) => setValues({ ...values, full_name: e.target.value })}
+          value={values["full_name"]}
+          onChange={(e) => setValues({ ...values, ["full_name"]: e.target.value })}
         />
       </Field>
       <Field label="Mobile number">

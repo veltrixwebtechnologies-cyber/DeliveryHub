@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- normalizes legacy and current marketplace row shapes. */
 /**
  * The customer and seller apps use the shared marketplace schema:
  * orders.seller_id, order_number, buyer_* and order_items. The delivery UI

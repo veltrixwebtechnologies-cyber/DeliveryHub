@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- admin tables combine evolving Supabase relations. */
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";

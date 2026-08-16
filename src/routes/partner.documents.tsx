@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- document rows vary between deployed schema versions. */
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
