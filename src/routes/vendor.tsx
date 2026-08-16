@@ -11,6 +11,17 @@ import { db } from "@/lib/db";
 import { INR } from "@/lib/delivery";
 import { DELIVERY_ORDER_SELECT, normalizeOrder } from "@/lib/shared-orders";
 
+type VendorOrder = {
+  id: string;
+  status: string;
+  order_code?: string | null;
+  customer_name?: string | null;
+  customer_address?: string | null;
+  order_total?: number | null;
+  delivery_fee?: number | null;
+  vendors?: { shop_name?: string | null } | null;
+};
+
 export const Route = createFileRoute("/vendor")({
   ssr: false,
   head: () => ({
@@ -34,7 +45,7 @@ export const Route = createFileRoute("/vendor")({
 });
 
 function VendorConsole() {
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<VendorOrder[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -58,7 +69,7 @@ function VendorConsole() {
       .eq("seller_id", seller.id)
       .order("created_at", { ascending: false })
       .limit(30);
-    setOrders((data ?? []).map(normalizeOrder));
+    setOrders((data ?? []).map((row: unknown) => normalizeOrder(row) as VendorOrder));
   }, []);
 
   useEffect(() => {
@@ -72,7 +83,7 @@ function VendorConsole() {
     };
   }, [load]);
 
-  async function markReady(order: any) {
+  async function markReady(order: VendorOrder) {
     setBusy(order.id);
     const { data, error: rpcErr } = await db.rpc("advance_seller_order", {
       _order_id: order.id,
@@ -121,7 +132,7 @@ function VendorConsole() {
                   <p className="text-sm font-medium text-foreground">
                     {INR(o.order_total)} · delivery {INR(o.delivery_fee)}
                   </p>
-                  {["placed", "accepted", "packed"].includes(o.status) ? (
+                  {["new", "placed", "accepted", "packed"].includes(o.status) ? (
                     <Button
                       size="sm"
                       className="mt-1"
