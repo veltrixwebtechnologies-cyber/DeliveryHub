@@ -38,6 +38,5 @@ export function StatCard({
         ) : null}
       </CardContent>
     </Card>
-
   );
 }

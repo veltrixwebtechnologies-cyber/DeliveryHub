@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- registration draft fields are dynamic by wizard step. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -174,7 +175,10 @@ function RegisterPage() {
         );
         setStep(Math.min(9, Math.max(2, p.registration_step ?? 2)));
         const [{ data: d }, { data: pz }, { data: sh }] = await Promise.all([
-          db.from("delivery_documents").select("doc_type,file_path,expiry_date").eq("partner_id", p.id),
+          db
+            .from("delivery_documents")
+            .select("doc_type,file_path,expiry_date")
+            .eq("partner_id", p.id),
           db.from("delivery_partner_zones").select("zone_id").eq("partner_id", p.id),
           db.from("delivery_shifts").select("slot").eq("partner_id", p.id),
         ]);
@@ -192,7 +196,10 @@ function RegisterPage() {
     setBusy(true);
     const { data, error } = await db
       .from("delivery_partners")
-      .update({ ...patch, registration_step: Math.max(partner["registration_step"] ?? 1, nextStep) })
+      .update({
+        ...patch,
+        registration_step: Math.max(partner["registration_step"] ?? 1, nextStep),
+      })
       .eq("id", partner["id"])
       .select("*")
       .single();
@@ -293,12 +300,15 @@ function RegisterPage() {
               </>
             ) : null}
             {saveState === "error" ? (
-              <span className="text-destructive">Couldn’t autosave — your next step will retry.</span>
+              <span className="text-destructive">
+                Couldn’t autosave — your next step will retry.
+              </span>
             ) : null}
-            {saveState === "idle" && partner ? <span>Your progress saves automatically.</span> : null}
+            {saveState === "idle" && partner ? (
+              <span>Your progress saves automatically.</span>
+            ) : null}
           </div>
         </div>
-
 
         <Card>
           <CardContent className="p-6">
@@ -307,7 +317,9 @@ function RegisterPage() {
                 existingUser={!!user && !!partner}
                 currentUserId={user?.id}
                 currentUserEmail={user?.email}
-                currentUserName={user?.user_metadata?.full_name ?? user?.user_metadata?.display_name}
+                currentUserName={
+                  user?.user_metadata?.full_name ?? user?.user_metadata?.display_name
+                }
                 busy={busy}
                 setBusy={setBusy}
                 onDone={(p) => {
@@ -457,7 +469,11 @@ function RegisterPage() {
                 {!isBicycle ? (
                   <>
                     <Field label="Registration certificate (RC)">
-                      <FileInput done={hasDoc("rc")} busy={busy} onFile={(f) => uploadDoc("rc", f)} />
+                      <FileInput
+                        done={hasDoc("rc")}
+                        busy={busy}
+                        onFile={(f) => uploadDoc("rc", f)}
+                      />
                     </Field>
                     <Field label="Insurance">
                       <FileInput
@@ -652,9 +668,7 @@ function RegisterPage() {
                       <Checkbox
                         checked={selectedZones.includes(z.id)}
                         onCheckedChange={(c) =>
-                          setSelectedZones((s) =>
-                            c ? [...s, z.id] : s.filter((x) => x !== z.id),
-                          )
+                          setSelectedZones((s) => (c ? [...s, z.id] : s.filter((x) => x !== z.id)))
                         }
                       />
                       <span>
@@ -670,10 +684,15 @@ function RegisterPage() {
                   disabled={selectedZones.length === 0}
                   onNext={async () => {
                     setBusy(true);
-                    await db.from("delivery_partner_zones").delete().eq("partner_id", partner!["id"]);
                     await db
                       .from("delivery_partner_zones")
-                      .insert(selectedZones.map((z) => ({ partner_id: partner!["id"], zone_id: z })));
+                      .delete()
+                      .eq("partner_id", partner!["id"]);
+                    await db
+                      .from("delivery_partner_zones")
+                      .insert(
+                        selectedZones.map((z) => ({ partner_id: partner!["id"], zone_id: z })),
+                      );
                     setBusy(false);
                     savePartner({}, 9);
                   }}
@@ -764,11 +783,7 @@ function FileInput({
 }) {
   return (
     <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground hover:bg-muted">
-      {done ? (
-        <Check className="h-4 w-4 text-primary" />
-      ) : (
-        <Upload className="h-4 w-4" />
-      )}
+      {done ? <Check className="h-4 w-4 text-primary" /> : <Upload className="h-4 w-4" />}
       <span>{done ? "Uploaded — tap to replace" : "Choose a file"}</span>
       <input
         type="file"
@@ -855,7 +870,9 @@ function StepAccount({
       if (error || !data.user) {
         setBusy(false);
         if (error?.message.toLowerCase().includes("already registered")) {
-          toast.error("This email is already registered. Sign in first, then continue registration.");
+          toast.error(
+            "This email is already registered. Sign in first, then continue registration.",
+          );
         } else {
           toast.error(error?.message ?? "Could not create the account");
         }
@@ -929,18 +946,18 @@ function StepAccount({
             : "Supabase Auth will create this account securely."}
         </p>
       </Field>
-      {!currentUserId ? <Field label="Password">
-        <Input
-          type="password"
-          value={values.password}
-          onChange={(e) => setValues({ ...values, password: e.target.value })}
-        />
-      </Field> : <p className="text-sm text-muted-foreground">Using your existing Local Shore account.</p>}
-      <Button
-        className="w-full"
-        disabled={!valid || busy}
-        onClick={createAccount}
-      >
+      {!currentUserId ? (
+        <Field label="Password">
+          <Input
+            type="password"
+            value={values.password}
+            onChange={(e) => setValues({ ...values, password: e.target.value })}
+          />
+        </Field>
+      ) : (
+        <p className="text-sm text-muted-foreground">Using your existing Local Shore account.</p>
+      )}
+      <Button className="w-full" disabled={!valid || busy} onClick={createAccount}>
         {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
         Create account
       </Button>

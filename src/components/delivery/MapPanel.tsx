@@ -11,9 +11,14 @@ type Props = {
 };
 
 export function MapPanel({ lat, lng, label, from = null, height = 220 }: Props) {
-  const valid = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+  const valid =
+    Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
   if (!valid) {
-    return <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">Location coordinates are not available yet. Use the address navigation link when available.</div>;
+    return (
+      <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+        Location coordinates are not available yet. Use the address navigation link when available.
+      </div>
+    );
   }
   const direct = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${lat},${lng}`)}${from ? `&origin=${encodeURIComponent(`${from[0]},${from[1]}`)}` : ""}&travelmode=two-wheeler`;
   return (

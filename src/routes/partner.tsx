@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- dispatch fallback supports mixed deployed RPC payloads. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";

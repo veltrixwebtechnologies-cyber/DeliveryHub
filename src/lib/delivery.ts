@@ -1,20 +1,13 @@
 export const INR = (n: number | string | null | undefined) =>
   `₹${Number(n ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export function haversineKm(
-  aLat: number,
-  aLng: number,
-  bLat: number,
-  bLng: number,
-): number {
+export function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
   const R = 6371;
   const dLat = ((bLat - aLat) * Math.PI) / 180;
   const dLng = ((bLng - aLng) * Math.PI) / 180;
   const s =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos((aLat * Math.PI) / 180) *
-      Math.cos((bLat * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
+    Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
   return Math.round(2 * R * Math.asin(Math.sqrt(s)) * 100) / 100;
 }
 
@@ -139,10 +132,7 @@ export function osmEmbed(lat: number, lng: number, zoomPad = 0.012) {
   return `https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}&z=${zoom}&output=embed`;
 }
 
-export function osmDirections(
-  from: [number, number] | null,
-  to: [number, number],
-) {
+export function osmDirections(from: [number, number] | null, to: [number, number]) {
   const f = from ? `${from[0]},${from[1]}` : "";
   return `https://www.openstreetmap.org/directions?engine=fossgis_osrm_bike&route=${f};${to[0]},${to[1]}`;
 }

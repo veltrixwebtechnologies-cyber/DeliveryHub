@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- payout response typing is deferred with the payment workflow. */
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Banknote, CalendarDays, CircleDollarSign, Wallet } from "lucide-react";

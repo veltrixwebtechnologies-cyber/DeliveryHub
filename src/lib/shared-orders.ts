@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- normalizes legacy and current marketplace row shapes. */
 /**
  * The customer and seller apps use the shared marketplace schema:
  * orders.seller_id, order_number, buyer_* and order_items. The delivery UI
@@ -5,7 +6,13 @@
  */
 export function normalizeOrder(row: any) {
   const seller = row?.seller ?? row?.vendors ?? null;
-  const address = [seller?.address_line1, seller?.address_line2, seller?.city, seller?.state, seller?.pincode]
+  const address = [
+    seller?.address_line1,
+    seller?.address_line2,
+    seller?.city,
+    seller?.state,
+    seller?.pincode,
+  ]
     .filter(Boolean)
     .join(", ");
   return {
@@ -16,10 +23,12 @@ export function normalizeOrder(row: any) {
     customer_address: row?.customer_address ?? row?.buyer_address,
     order_total: row?.order_total ?? row?.total,
     delivery_fee: row?.delivery_fee ?? row?.shipping_fee,
-    items: row?.items ?? (row?.order_items ?? []).map((item: any) => ({
-      ...item,
-      name: item.product_name,
-    })),
+    items:
+      row?.items ??
+      (row?.order_items ?? []).map((item: any) => ({
+        ...item,
+        name: item.product_name,
+      })),
     vendors: seller
       ? {
           ...seller,
@@ -35,5 +44,4 @@ export function normalizeAssignment(row: any) {
   return row ? { ...row, orders: normalizeOrder(row.orders) } : row;
 }
 
-export const DELIVERY_ORDER_SELECT =
-  "*, seller:sellers(*), order_items(*)";
+export const DELIVERY_ORDER_SELECT = "*, seller:sellers(*), order_items(*)";

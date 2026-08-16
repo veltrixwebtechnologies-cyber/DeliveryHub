@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- document rows vary between deployed schema versions. */
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -81,18 +82,16 @@ function Documents() {
       toast.error(upErr.message);
       return;
     }
-    const { error } = await db
-      .from("delivery_documents")
-      .upsert(
-        {
-          partner_id: partner.id,
-          doc_type: docType,
-          file_path: path,
-          status: "pending",
-          expiry_date: expiryDate || null,
-        },
-        { onConflict: "partner_id,doc_type" },
-      );
+    const { error } = await db.from("delivery_documents").upsert(
+      {
+        partner_id: partner.id,
+        doc_type: docType,
+        file_path: path,
+        status: "pending",
+        expiry_date: expiryDate || null,
+      },
+      { onConflict: "partner_id,doc_type" },
+    );
     setBusy(null);
     if (error) {
       toast.error(error.message);

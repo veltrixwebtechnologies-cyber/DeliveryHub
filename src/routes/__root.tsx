@@ -79,17 +79,37 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Local Shore Delivery Partners — Ride, Deliver, Earn" },
-      { name: "description", content: "Join Local Shore as a delivery partner. Pick up packed orders from neighbourhood shops, deliver nearby and get paid per delivery with weekly payouts." },
+      {
+        name: "description",
+        content:
+          "Join Local Shore as a delivery partner. Pick up packed orders from neighbourhood shops, deliver nearby and get paid per delivery with weekly payouts.",
+      },
       { name: "author", content: "Lovable" },
       { property: "og:title", content: "Local Shore Delivery Partners — Ride, Deliver, Earn" },
-      { property: "og:description", content: "Join Local Shore as a delivery partner. Pick up packed orders from neighbourhood shops, deliver nearby and get paid per delivery with weekly payouts." },
+      {
+        property: "og:description",
+        content:
+          "Join Local Shore as a delivery partner. Pick up packed orders from neighbourhood shops, deliver nearby and get paid per delivery with weekly payouts.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
       { name: "twitter:title", content: "Local Shore Delivery Partners — Ride, Deliver, Earn" },
-      { name: "twitter:description", content: "Join Local Shore as a delivery partner. Pick up packed orders from neighbourhood shops, deliver nearby and get paid per delivery with weekly payouts." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/a3a519f5-78dd-473f-ba7b-5a4d7e0aa988/id-preview-3557e127--bff0f6c7-9b08-4604-a1d8-093fe3682e9d.lovable.app-1785566971890.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/a3a519f5-78dd-473f-ba7b-5a4d7e0aa988/id-preview-3557e127--bff0f6c7-9b08-4604-a1d8-093fe3682e9d.lovable.app-1785566971890.png" },
+      {
+        name: "twitter:description",
+        content:
+          "Join Local Shore as a delivery partner. Pick up packed orders from neighbourhood shops, deliver nearby and get paid per delivery with weekly payouts.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/a3a519f5-78dd-473f-ba7b-5a4d7e0aa988/id-preview-3557e127--bff0f6c7-9b08-4604-a1d8-093fe3682e9d.lovable.app-1785566971890.png",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/a3a519f5-78dd-473f-ba7b-5a4d7e0aa988/id-preview-3557e127--bff0f6c7-9b08-4604-a1d8-093fe3682e9d.lovable.app-1785566971890.png",
+      },
     ],
     links: [
       {

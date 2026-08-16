@@ -1,7 +1,17 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- admin tables combine evolving Supabase relations. */
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Bike, Package, ShieldCheck, Users, Wallet, RefreshCw, History, AlertTriangle } from "lucide-react";
+import {
+  Bike,
+  Package,
+  ShieldCheck,
+  Users,
+  Wallet,
+  RefreshCw,
+  History,
+  AlertTriangle,
+} from "lucide-react";
 import { AppShell, EmptyState } from "@/components/delivery/AppShell";
 import { StatCard } from "@/components/delivery/StatCard";
 import { StatusBadge } from "@/components/delivery/StatusBadge";
@@ -76,7 +86,9 @@ function AdminPage() {
         .order("created_at", { ascending: false }),
       db
         .from("delivery_withdrawal_requests")
-        .select("id,partner_id,amount,status,requested_at,processed_at,admin_note,delivery_partners(full_name)")
+        .select(
+          "id,partner_id,amount,status,requested_at,processed_at,admin_note,delivery_partners(full_name)",
+        )
         .order("requested_at", { ascending: false })
         .limit(100),
       db
@@ -182,12 +194,16 @@ function AdminPage() {
   }
 
   async function reassign(assignmentId: string) {
-    const { data, error } = await db.rpc("admin_reassign_delivery", { _assignment_id: assignmentId });
+    const { data, error } = await db.rpc("admin_reassign_delivery", {
+      _assignment_id: assignmentId,
+    });
     if (error) {
       toast.error(`Could not reassign delivery: ${error.message}`);
       return;
     }
-    toast.success(data ? "Delivery reassigned and re-dispatched" : "Delivery closed; no eligible partner found");
+    toast.success(
+      data ? "Delivery reassigned and re-dispatched" : "Delivery closed; no eligible partner found",
+    );
     setSelectedLive(null);
     setTimeline([]);
     load();
@@ -235,14 +251,24 @@ function AdminPage() {
   return (
     <AppShell
       title="Local Shore Admin"
-      nav={[{ to: "/admin", label: "Delivery operations", icon: <ShieldCheck className="h-4 w-4" /> }]}
+      nav={[
+        { to: "/admin", label: "Delivery operations", icon: <ShieldCheck className="h-4 w-4" /> },
+      ]}
     >
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard label="Partners" value={partners.length} icon={<Users className="h-4 w-4" />} />
-          <StatCard label="Pending approval" value={pending.length} icon={<ShieldCheck className="h-4 w-4" />} />
+          <StatCard
+            label="Pending approval"
+            value={pending.length}
+            icon={<ShieldCheck className="h-4 w-4" />}
+          />
           <StatCard label="Online now" value={online} icon={<Bike className="h-4 w-4" />} />
-          <StatCard label="Live deliveries" value={live.length} icon={<Package className="h-4 w-4" />} />
+          <StatCard
+            label="Live deliveries"
+            value={live.length}
+            icon={<Package className="h-4 w-4" />}
+          />
         </div>
 
         {selected ? (
@@ -257,11 +283,17 @@ function AdminPage() {
               <div className="grid gap-2 text-sm sm:grid-cols-2">
                 <Detail label="Mobile" value={selected.mobile} />
                 <Detail label="Email" value={selected.email} />
-                <Detail label="Vehicle" value={`${selected.vehicle_type ?? "—"} ${selected.vehicle_number ?? ""}`} />
+                <Detail
+                  label="Vehicle"
+                  value={`${selected.vehicle_type ?? "—"} ${selected.vehicle_number ?? ""}`}
+                />
                 <Detail label="City" value={selected.city ?? "—"} />
                 <Detail label="Aadhaar" value={selected.aadhaar_number ?? "—"} />
                 <Detail label="PAN" value={selected.pan_number ?? "—"} />
-                <Detail label="Bank" value={`${selected.bank_name ?? "—"} · ${selected.bank_ifsc ?? ""}`} />
+                <Detail
+                  label="Bank"
+                  value={`${selected.bank_name ?? "—"} · ${selected.bank_ifsc ?? ""}`}
+                />
                 <Detail label="Employment" value={selected.employment_type ?? "—"} />
               </div>
 
@@ -322,7 +354,10 @@ function AdminPage() {
 
           <TabsContent value="approvals" className="mt-4">
             {pending.length === 0 ? (
-              <EmptyState title="Nothing pending" description="All partner applications are reviewed." />
+              <EmptyState
+                title="Nothing pending"
+                description="All partner applications are reviewed."
+              />
             ) : (
               <PartnerTable rows={pending} onOpen={openPartner} />
             )}
@@ -334,7 +369,10 @@ function AdminPage() {
 
           <TabsContent value="live" className="mt-4">
             {live.length === 0 ? (
-              <EmptyState title="No live deliveries" description="Active pickups and drops appear here in realtime." />
+              <EmptyState
+                title="No live deliveries"
+                description="Active pickups and drops appear here in realtime."
+              />
             ) : (
               <Card>
                 <CardContent className="p-0">
@@ -344,8 +382,8 @@ function AdminPage() {
                         <TableHead>Order</TableHead>
                         <TableHead>Shop</TableHead>
                         <TableHead>Partner</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead />
+                        <TableHead>Status</TableHead>
+                        <TableHead />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -378,23 +416,47 @@ function AdminPage() {
 
           <TabsContent value="exceptions" className="mt-4">
             {exceptions.length === 0 ? (
-              <EmptyState title="No delivery exceptions" description="Rider and admin exceptions will appear here." />
+              <EmptyState
+                title="No delivery exceptions"
+                description="Rider and admin exceptions will appear here."
+              />
             ) : (
               <Card>
                 <CardContent className="p-0">
                   <Table>
-                    <TableHeader><TableRow><TableHead>Partner</TableHead><TableHead>Reason</TableHead><TableHead>Status</TableHead><TableHead>Date</TableHead><TableHead /></TableRow></TableHeader>
-                    <TableBody>{exceptions.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell>{item.delivery_partners?.full_name ?? "—"}</TableCell>
-                        <TableCell className="capitalize">{String(item.reason).replaceAll("_", " ")}</TableCell>
-                        <TableCell><StatusBadge status={item.resolution_status} kind="plain" /></TableCell>
-                        <TableCell>{new Date(item.created_at).toLocaleString()}</TableCell>
-                        <TableCell className="text-right">
-                          {item.resolution_status === "open" ? <Button size="sm" onClick={() => void resolveException(item.id, "resolved")}><AlertTriangle className="mr-1 h-3.5 w-3.5" /> Resolve</Button> : null}
-                        </TableCell>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Partner</TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead />
                       </TableRow>
-                    ))}</TableBody>
+                    </TableHeader>
+                    <TableBody>
+                      {exceptions.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell>{item.delivery_partners?.full_name ?? "—"}</TableCell>
+                          <TableCell className="capitalize">
+                            {String(item.reason).replaceAll("_", " ")}
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge status={item.resolution_status} kind="plain" />
+                          </TableCell>
+                          <TableCell>{new Date(item.created_at).toLocaleString()}</TableCell>
+                          <TableCell className="text-right">
+                            {item.resolution_status === "open" ? (
+                              <Button
+                                size="sm"
+                                onClick={() => void resolveException(item.id, "resolved")}
+                              >
+                                <AlertTriangle className="mr-1 h-3.5 w-3.5" /> Resolve
+                              </Button>
+                            ) : null}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
                   </Table>
                 </CardContent>
               </Card>
@@ -403,15 +465,46 @@ function AdminPage() {
 
           <TabsContent value="withdrawals" className="mt-4">
             {withdrawals.length === 0 ? (
-              <EmptyState title="No withdrawal requests" description="Partner withdrawal requests will appear here." />
+              <EmptyState
+                title="No withdrawal requests"
+                description="Partner withdrawal requests will appear here."
+              />
             ) : (
-              <Card><CardContent className="p-0"><Table><TableHeader><TableRow><TableHead>Partner</TableHead><TableHead>Requested</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader><TableBody>{withdrawals.map((item) => <TableRow key={item.id}><TableCell>{item.delivery_partners?.full_name ?? "—"}</TableCell><TableCell>{new Date(item.requested_at).toLocaleString()}</TableCell><TableCell><StatusBadge status={item.status} kind="plain" /></TableCell><TableCell className="text-right">{INR(item.amount)}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
+              <Card>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Partner</TableHead>
+                        <TableHead>Requested</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {withdrawals.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell>{item.delivery_partners?.full_name ?? "—"}</TableCell>
+                          <TableCell>{new Date(item.requested_at).toLocaleString()}</TableCell>
+                          <TableCell>
+                            <StatusBadge status={item.status} kind="plain" />
+                          </TableCell>
+                          <TableCell className="text-right">{INR(item.amount)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
             )}
           </TabsContent>
 
           <TabsContent value="payouts" className="mt-4">
             {payouts.length === 0 ? (
-              <EmptyState title="No payouts yet" description="Weekly payout batches will appear here." />
+              <EmptyState
+                title="No payouts yet"
+                description="Weekly payout batches will appear here."
+              />
             ) : (
               <Card>
                 <CardContent className="p-0">
@@ -456,10 +549,47 @@ function AdminPage() {
         {selectedLive ? (
           <Card>
             <CardHeader className="flex-row items-center justify-between space-y-0">
-              <div><CardTitle className="text-base">Delivery timeline</CardTitle><p className="text-sm text-muted-foreground">{selectedLive.orders?.order_code ?? selectedLive.id}</p></div>
-              <Button size="sm" variant="ghost" onClick={() => { setSelectedLive(null); setTimeline([]); }}>Close</Button>
+              <div>
+                <CardTitle className="text-base">Delivery timeline</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  {selectedLive.orders?.order_code ?? selectedLive.id}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setSelectedLive(null);
+                  setTimeline([]);
+                }}
+              >
+                Close
+              </Button>
             </CardHeader>
-            <CardContent>{timeline.length === 0 ? <p className="text-sm text-muted-foreground">No tracking events recorded.</p> : <div className="space-y-3">{timeline.map((event) => <div key={event.id} className="flex items-start gap-3 border-l-2 border-primary/30 pl-4"><div><p className="text-sm font-medium capitalize">{String(event.status).replaceAll("_", " ")}</p><p className="text-xs text-muted-foreground">{event.note ?? "—"} · {event.actor_role ?? "system"} · {new Date(event.created_at).toLocaleString()}</p></div></div>)}</div>}</CardContent>
+            <CardContent>
+              {timeline.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No tracking events recorded.</p>
+              ) : (
+                <div className="space-y-3">
+                  {timeline.map((event) => (
+                    <div
+                      key={event.id}
+                      className="flex items-start gap-3 border-l-2 border-primary/30 pl-4"
+                    >
+                      <div>
+                        <p className="text-sm font-medium capitalize">
+                          {String(event.status).replaceAll("_", " ")}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {event.note ?? "—"} · {event.actor_role ?? "system"} ·{" "}
+                          {new Date(event.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
           </Card>
         ) : null}
       </div>

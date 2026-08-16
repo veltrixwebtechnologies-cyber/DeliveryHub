@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- delivery relations are schema-version compatible. */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -271,7 +272,10 @@ function Deliveries() {
       _photo_path: null,
     });
     setExceptionBusy(false);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
     setExceptionNotes("");
     toast.success("Delivery exception reported to support");
   }
@@ -466,13 +470,46 @@ function Deliveries() {
             ) : null}
 
             <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/40 p-4 dark:border-amber-900 dark:bg-amber-950/20">
-              <p className="flex items-center gap-2 text-sm font-semibold text-foreground"><AlertTriangle className="h-4 w-4 text-amber-600" />Report a delivery issue</p>
+              <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                Report a delivery issue
+              </p>
               <div className="flex flex-col gap-2 sm:flex-row">
-                <select aria-label="Exception reason" value={exceptionReason} onChange={(e) => setExceptionReason(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
-                  {[["customer_unavailable", "Customer unavailable"], ["wrong_address", "Wrong address"], ["restaurant_closed", "Restaurant closed"], ["item_unavailable", "Item unavailable"], ["vehicle_breakdown", "Vehicle breakdown"], ["weather_issue", "Weather issue"], ["delivery_refused", "Delivery refused"], ["other", "Other"]].map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+                <select
+                  aria-label="Exception reason"
+                  value={exceptionReason}
+                  onChange={(e) => setExceptionReason(e.target.value)}
+                  className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                >
+                  {[
+                    ["customer_unavailable", "Customer unavailable"],
+                    ["wrong_address", "Wrong address"],
+                    ["restaurant_closed", "Restaurant closed"],
+                    ["item_unavailable", "Item unavailable"],
+                    ["vehicle_breakdown", "Vehicle breakdown"],
+                    ["weather_issue", "Weather issue"],
+                    ["delivery_refused", "Delivery refused"],
+                    ["other", "Other"],
+                  ].map(([value, text]) => (
+                    <option key={value} value={value}>
+                      {text}
+                    </option>
+                  ))}
                 </select>
-                <Input value={exceptionNotes} onChange={(e) => setExceptionNotes(e.target.value)} placeholder="Short note (optional)" maxLength={500} />
-                <Button type="button" variant="outline" disabled={exceptionBusy} onClick={() => void submitException()}>{exceptionBusy ? "Sending…" : "Report"}</Button>
+                <Input
+                  value={exceptionNotes}
+                  onChange={(e) => setExceptionNotes(e.target.value)}
+                  placeholder="Short note (optional)"
+                  maxLength={500}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={exceptionBusy}
+                  onClick={() => void submitException()}
+                >
+                  {exceptionBusy ? "Sending…" : "Report"}
+                </Button>
               </div>
             </div>
 

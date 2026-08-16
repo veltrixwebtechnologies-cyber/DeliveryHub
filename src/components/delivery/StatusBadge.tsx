@@ -1,9 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import {
-  ASSIGNMENT_STATUS_LABEL,
-  ORDER_STATUS_LABEL,
-  PARTNER_STATUS_LABEL,
-} from "@/lib/delivery";
+import { ASSIGNMENT_STATUS_LABEL, ORDER_STATUS_LABEL, PARTNER_STATUS_LABEL } from "@/lib/delivery";
 
 const TONE: Record<string, string> = {
   approved: "bg-primary text-primary-foreground",

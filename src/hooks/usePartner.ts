@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- Supabase RPC compatibility across deployed schemas. */
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { User } from "@supabase/supabase-js";
