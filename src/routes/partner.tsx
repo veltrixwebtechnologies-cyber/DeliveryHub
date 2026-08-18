@@ -16,6 +16,14 @@ import { usePartner } from "@/hooks/usePartner";
 import { INR, etaMinutes, PARTNER_STATUS_LABEL } from "@/lib/delivery";
 import { StatusBadge } from "@/components/delivery/StatusBadge";
 import { DELIVERY_ORDER_SELECT, normalizeAssignment } from "@/lib/shared-orders";
+import {
+  acceptDelivery,
+  claimNextDeliveryOffer,
+  goOffline,
+  rejectDelivery,
+} from "@/services/deliveryService";
+import { locationService } from "@/services/locationService";
+import { setPartnerAvailability } from "@/repositories/partnerRepository";
 
 export const Route = createFileRoute("/partner")({
   ssr: false,
@@ -74,16 +82,12 @@ function PartnerLayout() {
     async (reason: string) => {
       if (!partner || partner.availability !== "online" || offlineWriteRef.current) return;
       offlineWriteRef.current = true;
-      const { error: rpcError } = await db.rpc("partner_go_offline");
-      const error =
-        rpcError?.code === "PGRST202"
-          ? (
-              await db
-                .from("delivery_partners")
-                .update({ availability: "offline" })
-                .eq("id", partner.id)
-            ).error
-          : rpcError;
+      let error: unknown = null;
+      try {
+        await goOffline();
+      } catch (rpcError) {
+        error = rpcError;
+      }
       offlineWriteRef.current = false;
       if (!error) {
         setRequest(null);
@@ -104,28 +108,19 @@ function PartnerLayout() {
         ? reportedAccuracy
         : null;
     try {
-      const { error } = await db.rpc("submit_partner_location", {
-        _latitude: pos.coords.latitude,
-        _longitude: pos.coords.longitude,
-        _accuracy_m: accuracy,
-        // Browser fallback providers can return a stale device timestamp even
-        // though the callback is current. The server validates this timestamp,
-        // so use the callback time for the location update.
-        _captured_at: new Date().toISOString(),
+      await locationService.submitCurrentLocation({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracyM: accuracy,
+        capturedAt: new Date().toISOString(),
       });
-      if (error) {
-        console.error("[delivery-location] update failed", error);
-        if (!locationErrorShownRef.current) {
-          locationErrorShownRef.current = true;
-          toast.error(`Location update failed: ${error.message}`);
-        }
-        return false;
-      }
     } catch (error) {
-      console.error("[delivery-location] request failed", error);
+      console.error("[delivery-location] update failed", error);
       if (!locationErrorShownRef.current) {
         locationErrorShownRef.current = true;
-        toast.error("Location update failed. Check your connection and try again.");
+        toast.error(
+          `Location update failed: ${error instanceof Error ? error.message : "unknown error"}`,
+        );
       }
       return false;
     }
@@ -342,11 +337,11 @@ function PartnerLayout() {
       // Realtime/server dispatch can be delayed or unavailable. This secure
       // RPC atomically creates one eligible offer for this authenticated,
       // approved online partner without exposing unassigned order data.
-      const { error: claimError } = await (db as any).rpc("claim_next_delivery_offer");
-      if (claimError && claimError.code !== "PGRST202") {
+      try {
+        await claimNextDeliveryOffer();
+      } catch (claimError) {
         console.error("[delivery-assignments] offer claim failed", {
-          code: claimError.code,
-          message: claimError.message,
+          message: claimError instanceof Error ? claimError.message : "unknown error",
         });
       }
       const { data, error } = await db
@@ -408,10 +403,6 @@ function PartnerLayout() {
     };
     void load();
 
-    // Realtime is preferred, but polling keeps assignment alerts working when
-    // the table is not present in the project's Realtime publication.
-    const poll = window.setInterval(() => void load(), 5000);
-
     const channel = supabase
       .channel(`partner-${partner.id}`)
       .on(
@@ -443,7 +434,6 @@ function PartnerLayout() {
       .subscribe();
 
     return () => {
-      window.clearInterval(poll);
       if (refreshTimer !== null) window.clearTimeout(refreshTimer);
       supabase.removeChannel(channel);
     };
@@ -472,19 +462,22 @@ function PartnerLayout() {
     }
     setBusy(true);
     if (accept) {
-      const { data, error } = await db.rpc("accept_delivery_request", {
-        _assignment_id: request.id,
-      });
+      let data: string | null = null;
+      let error: unknown = null;
+      try {
+        data = await acceptDelivery(request.id);
+      } catch (caught) {
+        error = caught;
+      }
       setBusy(false);
       if (error) {
         console.error("[delivery-assignments] accept failed", {
           assignmentId: request.id,
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
+          message: error instanceof Error ? error.message : "unknown error",
         });
-        toast.error(error.message || "Could not accept this delivery request.");
+        toast.error(
+          error instanceof Error ? error.message : "Could not accept this delivery request.",
+        );
         setRequest(null);
         return;
       }
@@ -509,10 +502,11 @@ function PartnerLayout() {
       setRequest(null);
       navigate({ to: "/partner/deliveries" });
     } else {
-      const { error } = await db.rpc("reject_delivery_request", {
-        _assignment_id: request.id,
-      });
-      if (error) toast.error(error.message);
+      try {
+        await rejectDelivery(request.id);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not reject this request.");
+      }
       setBusy(false);
       setRequest(null);
     }
@@ -537,13 +531,11 @@ function PartnerLayout() {
       await markOffline("you chose to go offline");
       return;
     }
-    const { error } = await db
-      .from("delivery_partners")
-      .update({ availability: "online" })
-      .eq("id", partner.id);
-    if (error) {
+    try {
+      await setPartnerAvailability(partner.id, "online");
+    } catch (error) {
       console.error("[delivery-availability] update failed", error);
-      toast.error(error.message);
+      toast.error(error instanceof Error ? error.message : "Could not update availability.");
       return;
     }
     if (on) {

@@ -1,9 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 
 /**
- * Loosely-typed data client. Generated types are refreshed asynchronously after
- * migrations, so table queries go through this alias to stay build-safe.
- * Auth and Storage keep using the generated `supabase` client directly.
+ * Legacy query escape hatch for screens that depend on tables not represented
+ * in the checked-in schema snapshot yet. New business-critical operations must
+ * use a typed repository/service instead of this compatibility boundary.
  */
-
 export const db: any = supabase;

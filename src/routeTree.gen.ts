@@ -19,6 +19,7 @@ import { Route as PartnerIndexRouteImport } from './routes/partner.index'
 import { Route as PartnerDeliveriesRouteImport } from './routes/partner.deliveries'
 import { Route as PartnerDocumentsRouteImport } from './routes/partner.documents'
 import { Route as PartnerEarningsRouteImport } from './routes/partner.earnings'
+import { Route as VendorModuleRouteImport } from './routes/vendor.$module'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -70,6 +71,11 @@ const PartnerEarningsRoute = PartnerEarningsRouteImport.update({
   path: '/earnings',
   getParentRoute: () => PartnerRoute,
 } as any)
+const VendorModuleRoute = VendorModuleRouteImport.update({
+  id: '/$module',
+  path: '/$module',
+  getParentRoute: () => VendorRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -77,10 +83,11 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/partner': typeof PartnerRouteWithChildren
   '/register': typeof RegisterRoute
-  '/vendor': typeof VendorRoute
+  '/vendor': typeof VendorRouteWithChildren
   '/partner/deliveries': typeof PartnerDeliveriesRoute
   '/partner/documents': typeof PartnerDocumentsRoute
   '/partner/earnings': typeof PartnerEarningsRoute
+  '/vendor/$module': typeof VendorModuleRoute
   '/partner/': typeof PartnerIndexRoute
 }
 export interface FileRoutesByTo {
@@ -88,10 +95,11 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminRoute
   '/auth': typeof AuthRoute
   '/register': typeof RegisterRoute
-  '/vendor': typeof VendorRoute
+  '/vendor': typeof VendorRouteWithChildren
   '/partner/deliveries': typeof PartnerDeliveriesRoute
   '/partner/documents': typeof PartnerDocumentsRoute
   '/partner/earnings': typeof PartnerEarningsRoute
+  '/vendor/$module': typeof VendorModuleRoute
   '/partner': typeof PartnerIndexRoute
 }
 export interface FileRoutesById {
@@ -101,10 +109,11 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/partner': typeof PartnerRouteWithChildren
   '/register': typeof RegisterRoute
-  '/vendor': typeof VendorRoute
+  '/vendor': typeof VendorRouteWithChildren
   '/partner/deliveries': typeof PartnerDeliveriesRoute
   '/partner/documents': typeof PartnerDocumentsRoute
   '/partner/earnings': typeof PartnerEarningsRoute
+  '/vendor/$module': typeof VendorModuleRoute
   '/partner/': typeof PartnerIndexRoute
 }
 export interface FileRouteTypes {
@@ -119,6 +128,7 @@ export interface FileRouteTypes {
     | '/partner/deliveries'
     | '/partner/documents'
     | '/partner/earnings'
+    | '/vendor/$module'
     | '/partner/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -130,6 +140,7 @@ export interface FileRouteTypes {
     | '/partner/deliveries'
     | '/partner/documents'
     | '/partner/earnings'
+    | '/vendor/$module'
     | '/partner'
   id:
     | '__root__'
@@ -142,6 +153,7 @@ export interface FileRouteTypes {
     | '/partner/deliveries'
     | '/partner/documents'
     | '/partner/earnings'
+    | '/vendor/$module'
     | '/partner/'
   fileRoutesById: FileRoutesById
 }
@@ -151,7 +163,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   PartnerRoute: typeof PartnerRouteWithChildren
   RegisterRoute: typeof RegisterRoute
-  VendorRoute: typeof VendorRoute
+  VendorRoute: typeof VendorRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -226,6 +238,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PartnerEarningsRouteImport
       parentRoute: typeof PartnerRoute
     }
+    '/vendor/$module': {
+      id: '/vendor/$module'
+      path: '/$module'
+      fullPath: '/vendor/$module'
+      preLoaderRoute: typeof VendorModuleRouteImport
+      parentRoute: typeof VendorRoute
+    }
   }
 }
 
@@ -246,13 +265,24 @@ const PartnerRouteChildren: PartnerRouteChildren = {
 const PartnerRouteWithChildren =
   PartnerRoute._addFileChildren(PartnerRouteChildren)
 
+interface VendorRouteChildren {
+  VendorModuleRoute: typeof VendorModuleRoute
+}
+
+const VendorRouteChildren: VendorRouteChildren = {
+  VendorModuleRoute: VendorModuleRoute,
+}
+
+const VendorRouteWithChildren =
+  VendorRoute._addFileChildren(VendorRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
   AuthRoute: AuthRoute,
   PartnerRoute: PartnerRouteWithChildren,
   RegisterRoute: RegisterRoute,
-  VendorRoute: VendorRoute,
+  VendorRoute: VendorRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

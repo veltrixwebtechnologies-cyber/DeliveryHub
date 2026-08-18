@@ -784,6 +784,27 @@ export type Database = {
         };
         Returns: undefined;
       };
+      claim_next_delivery_offer: {
+        Args: Record<PropertyKey, never>;
+        Returns: undefined;
+      };
+      partner_go_offline: {
+        Args: Record<PropertyKey, never>;
+        Returns: undefined;
+      };
+      reject_delivery_request: {
+        Args: { _assignment_id: string };
+        Returns: undefined;
+      };
+      submit_partner_location: {
+        Args: {
+          _accuracy_m?: number | null;
+          _captured_at?: string;
+          _latitude: number;
+          _longitude: number;
+        };
+        Returns: undefined;
+      };
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"];
