@@ -1,7 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Bike, ShieldCheck, Wallet, MapPin, Clock, PackageCheck, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { MarketplaceAdStrip } from "@/components/marketplace/MarketplaceAdStrip";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -80,7 +79,6 @@ function Landing() {
       </header>
 
       <main className="relative">
-        <MarketplaceAdStrip />
         <section className="mx-auto max-w-6xl px-4 pb-20 pt-16 sm:pt-24">
           <div className="grid items-center gap-12 md:grid-cols-2">
             <div>
