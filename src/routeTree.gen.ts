@@ -19,6 +19,8 @@ import { Route as PartnerIndexRouteImport } from './routes/partner.index'
 import { Route as PartnerDeliveriesRouteImport } from './routes/partner.deliveries'
 import { Route as PartnerDocumentsRouteImport } from './routes/partner.documents'
 import { Route as PartnerEarningsRouteImport } from './routes/partner.earnings'
+import { Route as PartnerReferralRouteImport } from './routes/partner.referral'
+import { Route as PartnerRentalsRouteImport } from './routes/partner.rentals'
 import { Route as VendorModuleRouteImport } from './routes/vendor.$module'
 
 const IndexRoute = IndexRouteImport.update({
@@ -71,6 +73,16 @@ const PartnerEarningsRoute = PartnerEarningsRouteImport.update({
   path: '/earnings',
   getParentRoute: () => PartnerRoute,
 } as any)
+const PartnerReferralRoute = PartnerReferralRouteImport.update({
+  id: '/referral',
+  path: '/referral',
+  getParentRoute: () => PartnerRoute,
+} as any)
+const PartnerRentalsRoute = PartnerRentalsRouteImport.update({
+  id: '/rentals',
+  path: '/rentals',
+  getParentRoute: () => PartnerRoute,
+} as any)
 const VendorModuleRoute = VendorModuleRouteImport.update({
   id: '/$module',
   path: '/$module',
@@ -87,6 +99,8 @@ export interface FileRoutesByFullPath {
   '/partner/deliveries': typeof PartnerDeliveriesRoute
   '/partner/documents': typeof PartnerDocumentsRoute
   '/partner/earnings': typeof PartnerEarningsRoute
+  '/partner/referral': typeof PartnerReferralRoute
+  '/partner/rentals': typeof PartnerRentalsRoute
   '/vendor/$module': typeof VendorModuleRoute
   '/partner/': typeof PartnerIndexRoute
 }
@@ -99,6 +113,8 @@ export interface FileRoutesByTo {
   '/partner/deliveries': typeof PartnerDeliveriesRoute
   '/partner/documents': typeof PartnerDocumentsRoute
   '/partner/earnings': typeof PartnerEarningsRoute
+  '/partner/referral': typeof PartnerReferralRoute
+  '/partner/rentals': typeof PartnerRentalsRoute
   '/vendor/$module': typeof VendorModuleRoute
   '/partner': typeof PartnerIndexRoute
 }
@@ -113,6 +129,8 @@ export interface FileRoutesById {
   '/partner/deliveries': typeof PartnerDeliveriesRoute
   '/partner/documents': typeof PartnerDocumentsRoute
   '/partner/earnings': typeof PartnerEarningsRoute
+  '/partner/referral': typeof PartnerReferralRoute
+  '/partner/rentals': typeof PartnerRentalsRoute
   '/vendor/$module': typeof VendorModuleRoute
   '/partner/': typeof PartnerIndexRoute
 }
@@ -128,6 +146,8 @@ export interface FileRouteTypes {
     | '/partner/deliveries'
     | '/partner/documents'
     | '/partner/earnings'
+    | '/partner/referral'
+    | '/partner/rentals'
     | '/vendor/$module'
     | '/partner/'
   fileRoutesByTo: FileRoutesByTo
@@ -140,6 +160,8 @@ export interface FileRouteTypes {
     | '/partner/deliveries'
     | '/partner/documents'
     | '/partner/earnings'
+    | '/partner/referral'
+    | '/partner/rentals'
     | '/vendor/$module'
     | '/partner'
   id:
@@ -153,6 +175,8 @@ export interface FileRouteTypes {
     | '/partner/deliveries'
     | '/partner/documents'
     | '/partner/earnings'
+    | '/partner/referral'
+    | '/partner/rentals'
     | '/vendor/$module'
     | '/partner/'
   fileRoutesById: FileRoutesById
@@ -238,6 +262,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PartnerEarningsRouteImport
       parentRoute: typeof PartnerRoute
     }
+    '/partner/referral': {
+      id: '/partner/referral'
+      path: '/referral'
+      fullPath: '/partner/referral'
+      preLoaderRoute: typeof PartnerReferralRouteImport
+      parentRoute: typeof PartnerRoute
+    }
+    '/partner/rentals': {
+      id: '/partner/rentals'
+      path: '/rentals'
+      fullPath: '/partner/rentals'
+      preLoaderRoute: typeof PartnerRentalsRouteImport
+      parentRoute: typeof PartnerRoute
+    }
     '/vendor/$module': {
       id: '/vendor/$module'
       path: '/$module'
@@ -252,6 +290,8 @@ interface PartnerRouteChildren {
   PartnerDeliveriesRoute: typeof PartnerDeliveriesRoute
   PartnerDocumentsRoute: typeof PartnerDocumentsRoute
   PartnerEarningsRoute: typeof PartnerEarningsRoute
+  PartnerReferralRoute: typeof PartnerReferralRoute
+  PartnerRentalsRoute: typeof PartnerRentalsRoute
   PartnerIndexRoute: typeof PartnerIndexRoute
 }
 
@@ -259,6 +299,8 @@ const PartnerRouteChildren: PartnerRouteChildren = {
   PartnerDeliveriesRoute: PartnerDeliveriesRoute,
   PartnerDocumentsRoute: PartnerDocumentsRoute,
   PartnerEarningsRoute: PartnerEarningsRoute,
+  PartnerReferralRoute: PartnerReferralRoute,
+  PartnerRentalsRoute: PartnerRentalsRoute,
   PartnerIndexRoute: PartnerIndexRoute,
 }
 

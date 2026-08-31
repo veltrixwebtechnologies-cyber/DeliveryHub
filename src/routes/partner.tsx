@@ -1,12 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Bike, FileText, LayoutDashboard, Loader2, Package, Wallet } from "lucide-react";
+import {
+  AlertTriangle,
+  Bike,
+  Clock,
+  FileText,
+  Gift,
+  LayoutDashboard,
+  Loader2,
+  Navigation,
+  Package,
+  Wallet,
+} from "lucide-react";
 import { AppShell } from "@/components/delivery/AppShell";
 import { AddressNavigation, MapPanel } from "@/components/delivery/MapPanel";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,6 +36,25 @@ import {
 } from "@/services/deliveryService";
 import { locationService } from "@/services/locationService";
 import { setPartnerAvailability } from "@/repositories/partnerRepository";
+
+export function haversineDistanceKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const R = 6371; // Radius of Earth in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 export const Route = createFileRoute("/partner")({
   ssr: false,
@@ -51,6 +82,8 @@ const NAV = [
   { to: "/partner", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
   { to: "/partner/deliveries", label: "Deliveries", icon: <Package className="h-4 w-4" /> },
   { to: "/partner/earnings", label: "Earnings", icon: <Wallet className="h-4 w-4" /> },
+  { to: "/partner/referral", label: "Refer & Earn", icon: <Gift className="h-4 w-4 text-emerald-500" /> },
+  { to: "/partner/rentals", label: "Rent Vehicle", icon: <Bike className="h-4 w-4 text-blue-500" /> },
   { to: "/partner/documents", label: "Documents", icon: <FileText className="h-4 w-4" /> },
 ];
 
@@ -71,12 +104,80 @@ function PartnerLayout() {
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const [lowPowerMode, setLowPowerMode] = useState(false);
+  const [zoneInfo, setZoneInfo] = useState<{
+    isOutOfZone: boolean;
+    distanceKm: number;
+    zoneName: string;
+    zoneLat: number;
+    zoneLng: number;
+  } | null>(null);
   const watchRef = useRef<number | null>(null);
   const locationErrorShownRef = useRef(false);
   const lastActivityRef = useRef(Date.now());
   const offlineWriteRef = useRef(false);
   const shownNotificationIdsRef = useRef(new Set<string>());
   const shownNotificationKeysRef = useRef(new Set<string>());
+
+  // Zone geofence check
+  useEffect(() => {
+    if (!partner || partner.availability !== "online") {
+      setZoneInfo(null);
+      return;
+    }
+
+    const checkZone = async () => {
+      let zoneLat = 13.0827; // Default Shoreline hub center
+      let zoneLng = 80.2707;
+      let zoneName = "Shoreline Central Zone";
+      let radiusKm = 4.0;
+
+      try {
+        const { data: partnerZones } = await db
+          .from("delivery_partner_zones")
+          .select("delivery_zones(id, name, latitude, longitude, radius_km)")
+          .eq("partner_id", partner.id)
+          .limit(1);
+
+        if (partnerZones && partnerZones.length > 0 && partnerZones[0].delivery_zones) {
+          const z = partnerZones[0].delivery_zones as any;
+          if (z.latitude && z.longitude) {
+            zoneLat = Number(z.latitude);
+            zoneLng = Number(z.longitude);
+            zoneName = z.name || "Assigned Zone";
+            radiusKm = Number(z.radius_km || 4.0);
+          }
+        }
+      } catch (zErr) {
+        console.error("[zone-check] failed reading zone info", zErr);
+      }
+
+      if (Number.isFinite(partner.current_latitude) && Number.isFinite(partner.current_longitude)) {
+        const dist = haversineDistanceKm(
+          Number(partner.current_latitude),
+          Number(partner.current_longitude),
+          zoneLat,
+          zoneLng,
+        );
+        const outOfZone = dist > radiusKm;
+        setZoneInfo({
+          isOutOfZone: outOfZone,
+          distanceKm: dist,
+          zoneName,
+          zoneLat,
+          zoneLng,
+        });
+
+        if (outOfZone) {
+          toast.warning(
+            `🚨 You are ${dist.toFixed(1)} km outside your assigned zone (${zoneName}). Return to your zone to receive orders.`,
+            { id: "out-of-zone-toast", duration: 8000 },
+          );
+        }
+      }
+    };
+
+    void checkZone();
+  }, [partner?.id, partner?.availability, partner?.current_latitude, partner?.current_longitude]);
 
   const markOffline = useCallback(
     async (reason: string) => {
@@ -391,13 +492,31 @@ function PartnerLayout() {
       if (orderError) {
         console.error("[delivery-assignments] order details load failed", orderError);
       }
-      // A stale assignment must never be shown when the order has already
+      // A stale assignment must never be processed when the order has already
       // been assigned (including after an accept/realtime race).
       if (order?.assigned_partner_id) {
         setRequest(null);
         loadInFlight = false;
         return;
       }
+
+      // Auto-approve incoming delivery request (No manual Accept/Decline step)
+      try {
+        const acceptedData = await acceptDelivery(assignment.id);
+        if (acceptedData) {
+          toast.success("⚡ Order Auto-Approved & Assigned!", {
+            description: `Pickup: ${order?.vendors?.shop_name ?? "Local Shop"} · Drop: ${order?.customer_name ?? "Customer"}`,
+            duration: 6000,
+          });
+          void requestCurrentPosition().then(() => refresh());
+          navigate({ to: "/partner/deliveries" });
+          loadInFlight = false;
+          return;
+        }
+      } catch (autoErr) {
+        console.error("[auto-approval] failed auto-accepting delivery", autoErr);
+      }
+
       setRequest(normalizeAssignment({ ...assignment, orders: order ?? null }));
       loadInFlight = false;
     };
@@ -571,37 +690,97 @@ function PartnerLayout() {
       title="Local Shore Partners"
       nav={NAV}
       right={
-        <div className="flex items-center gap-2 rounded-lg bg-secondary px-3 py-1.5">
-          <span className="text-xs font-medium text-secondary-foreground">
-            {partner.availability === "online" ? "Online" : "Offline"}
-          </span>
-          <Switch
-            checked={partner.availability === "online"}
-            onCheckedChange={toggleOnline}
-            aria-label="Toggle online"
-          />
+        <div className="flex items-center gap-2">
+          {zoneInfo?.isOutOfZone && partner.availability === "online" ? (
+            <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-500/10 text-xs hidden sm:inline-flex">
+              ⚠️ Out of Zone
+            </Badge>
+          ) : null}
+          <div className="flex items-center gap-2 rounded-lg bg-secondary px-3 py-1.5">
+            <span className="text-xs font-medium text-secondary-foreground flex items-center gap-1.5">
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  partner.availability === "online"
+                    ? zoneInfo?.isOutOfZone
+                      ? "bg-amber-500 animate-pulse"
+                      : "bg-emerald-500 animate-pulse"
+                    : "bg-muted-foreground"
+                }`}
+              />
+              {partner.availability === "online" ? "Online" : "Offline"}
+            </span>
+            <Switch
+              checked={partner.availability === "online"}
+              onCheckedChange={toggleOnline}
+              disabled={partner.status !== "approved"}
+              aria-label="Toggle online"
+            />
+          </div>
         </div>
       }
     >
-      {partner.status !== "approved" ? (
-        <Card className="mb-6 border-primary/30 bg-secondary">
-          <CardContent className="flex flex-wrap items-center gap-3 p-4">
-            <Bike className="h-5 w-5 text-primary" />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-foreground">
-                Application {PARTNER_STATUS_LABEL[partner.status] ?? partner.status}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {partner.admin_note ??
-                  "Our team is verifying your documents. You can go online once approved."}
+      {zoneInfo?.isOutOfZone && partner.availability === "online" ? (
+        <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border-2 border-amber-500/80 bg-amber-500/10 p-4 text-amber-950 dark:text-amber-200 shadow-sm">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-sm">🚨 Out of Operating Zone ({zoneInfo.zoneName})</p>
+              <p className="text-xs opacity-90 mt-0.5">
+                You are currently {zoneInfo.distanceKm.toFixed(1)} km outside your assigned delivery zone. Head back to your zone to receive orders.
               </p>
             </div>
-            <StatusBadge status={partner.status} kind="partner" />
-          </CardContent>
-        </Card>
+          </div>
+          <Button
+            size="sm"
+            className="bg-amber-600 hover:bg-amber-700 text-white font-semibold shrink-0"
+            onClick={() =>
+              window.open(
+                `https://www.google.com/maps/dir/?api=1&destination=${zoneInfo.zoneLat},${zoneInfo.zoneLng}`,
+                "_blank",
+              )
+            }
+          >
+            <Navigation className="mr-1.5 h-4 w-4" /> Go to Zone
+          </Button>
+        </div>
       ) : null}
 
-      <Outlet />
+      {partner.status !== "approved" && !window.location.pathname.includes("/partner/documents") ? (
+        <div className="mx-auto max-w-2xl py-8 px-4 text-center">
+          <Card className="border-2 border-amber-500/40 bg-gradient-to-b from-amber-500/10 via-background to-background p-8 shadow-xl rounded-3xl">
+            <CardContent className="space-y-6 flex flex-col items-center">
+              <div className="grid h-20 w-20 place-items-center rounded-3xl bg-amber-500/20 text-amber-600 dark:text-amber-400 ring-8 ring-amber-500/10">
+                <Clock className="h-10 w-10 animate-pulse" />
+              </div>
+              <div>
+                <Badge className="bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 text-xs px-3 py-1 font-semibold">
+                  Status: {PARTNER_STATUS_LABEL[partner.status] ?? partner.status}
+                </Badge>
+                <h2 className="mt-4 text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+                  ⏳ Application Under Review
+                </h2>
+                <p className="mt-3 text-base text-muted-foreground leading-relaxed max-w-lg">
+                  Your delivery partner profile and verification documents have been submitted to the LocalShore Admin team.
+                </p>
+                <div className="mt-5 p-4 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-950 dark:text-amber-200 text-sm font-medium leading-relaxed">
+                  ⌛ <strong>24-Hour Review Window:</strong> It will take up to 24 hours to review and wait for admin approval. Once approved by the admin, all features (Deliveries, Earnings, Refer & Earn, Vehicle Rentals) will be unlocked automatically.
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-sm pt-2">
+                <Button
+                  className="w-full font-semibold shadow-md"
+                  onClick={() => navigate({ to: "/partner/documents" })}
+                >
+                  <FileText className="mr-2 h-4 w-4" /> View / Upload Documents
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <Outlet />
+      )}
       {lowPowerMode ? (
         <div className="mb-4 rounded-xl border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           Low battery: power-saving mode is active. Location refreshes less often until you charge

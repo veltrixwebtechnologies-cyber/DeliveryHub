@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Check, FileText, Upload } from "lucide-react";
+import { Check, Clock, FileText, Upload } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -123,6 +123,20 @@ function Documents() {
         </p>
       </div>
 
+      {partner.status !== "approved" ? (
+        <Card className="border-amber-500/50 bg-amber-500/10 text-amber-950 dark:text-amber-200 shadow-sm">
+          <CardContent className="flex items-start gap-3.5 p-4">
+            <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <h3 className="font-semibold text-sm">⏳ Application & Document Verification Pending</h3>
+              <p className="text-xs opacity-90 mt-1">
+                Your profile and uploaded documents are currently being reviewed by the LocalShore Admin team. It will take up to 24 hours to review and wait for admin approval. Once approved, all delivery features will unlock automatically.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Verification status</CardTitle>
@@ -132,6 +146,12 @@ function Documents() {
             const doc = docs.find((d) => d.doc_type === type);
             const expiry = doc?.expiry_date ? new Date(`${doc.expiry_date}T23:59:59`) : null;
             const daysLeft = expiry ? Math.ceil((expiry.getTime() - Date.now()) / 86400000) : null;
+            const rawStatus = doc?.status ?? "missing";
+            const displayStatus =
+              partner.status === "approved" && doc && rawStatus !== "rejected"
+                ? "approved"
+                : rawStatus;
+
             return (
               <div key={type} className="flex flex-wrap items-center gap-3 py-3">
                 <span className="grid h-9 w-9 place-items-center rounded-lg bg-secondary text-secondary-foreground">
@@ -150,7 +170,7 @@ function Documents() {
                           : `Expires ${doc.expiry_date} (${daysLeft} days)`)}
                   </p>
                 </div>
-                <StatusBadge status={doc?.status ?? "missing"} kind="plain" />
+                <StatusBadge status={displayStatus} kind="plain" />
                 {doc ? (
                   <Button size="sm" variant="secondary" onClick={() => view(doc.file_path)}>
                     View

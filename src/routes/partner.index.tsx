@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, Bike, Clock3, MapPin, Package, Star, TrendingUp, Wallet } from "lucide-react";
+import { ArrowRight, Bike, Clock3, Gift, MapPin, Package, Star, TrendingUp, Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -294,7 +294,7 @@ function PartnerDashboard() {
             </h2>
           </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <QuickAction
             to="/partner/deliveries"
             icon={<Package className="h-5 w-5" />}
@@ -302,16 +302,22 @@ function PartnerDashboard() {
             description="Pickup, navigate and complete"
           />
           <QuickAction
+            to="/partner/referral"
+            icon={<Gift className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />}
+            title="Refer & Earn"
+            description="Earn ₹500 for every friend referred"
+          />
+          <QuickAction
+            to="/partner/rentals"
+            icon={<Bike className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
+            title="Rent Vehicle"
+            description="EVs & Scooters from ₹149/day"
+          />
+          <QuickAction
             to="/partner/earnings"
             icon={<Wallet className="h-5 w-5" />}
             title="Earnings"
             description="Ledger and payout history"
-          />
-          <QuickAction
-            to="/partner/documents"
-            icon={<Bike className="h-5 w-5" />}
-            title="My documents"
-            description="Keep verification up to date"
           />
         </div>
       </section>
