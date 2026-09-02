@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Navigation, MapPin, Loader2, Store } from "lucide-react";
+import { Navigation, MapPin, Loader2 } from "lucide-react";
 import { osmDirections } from "@/lib/delivery";
 
 type Props = {
@@ -142,11 +142,13 @@ type AddressNavigationProps = {
   from?: [number, number] | null;
 };
 
+// Default center fallback (Coimbatore, Tamil Nadu center)
+const DEFAULT_CENTER: [number, number] = [11.0168, 76.9558];
+
 export function AddressNavigation({ address, label, from = null }: AddressNavigationProps) {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [searching, setSearching] = useState(true);
 
-  // Attempt lightweight OpenStreetMap Nominatim geocoding for text address
   useEffect(() => {
     let isCurrent = true;
     if (!address) {
@@ -156,67 +158,69 @@ export function AddressNavigation({ address, label, from = null }: AddressNaviga
 
     const cleanAddress = address.trim();
 
-    fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cleanAddress)}&limit=1`,
-    )
-      .then((res) => res.json())
-      .then((data) => {
+    // 1. Try primary address search
+    const geocode = async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cleanAddress)}&limit=1`,
+        );
+        const data = await res.json();
         if (!isCurrent) return;
+
         if (Array.isArray(data) && data.length > 0) {
           const lat = parseFloat(data[0].lat);
           const lng = parseFloat(data[0].lon);
           if (Number.isFinite(lat) && Number.isFinite(lng)) {
             setCoords({ lat, lng });
+            setSearching(false);
+            return;
           }
         }
-      })
-      .catch((err) => {
-        console.warn("[AddressNavigation] Nominatim search error", err);
-      })
-      .finally(() => {
+
+        // 2. Fallback: extract postal code or clean location terms (e.g. 641025, Tamil Nadu)
+        const matchPin = cleanAddress.match(/\b\d{6}\b/);
+        const pinQuery = matchPin ? `${matchPin[0]}, Tamil Nadu, India` : "Coimbatore, Tamil Nadu, India";
+        
+        const fallbackRes = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(pinQuery)}&limit=1`,
+        );
+        const fallbackData = await fallbackRes.json();
+        if (!isCurrent) return;
+
+        if (Array.isArray(fallbackData) && fallbackData.length > 0) {
+          const lat = parseFloat(fallbackData[0].lat);
+          const lng = parseFloat(fallbackData[0].lon);
+          if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            setCoords({ lat, lng });
+            setSearching(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("[AddressNavigation] Geocoding error", err);
+      } finally {
         if (isCurrent) setSearching(false);
-      });
+      }
+    };
+
+    void geocode();
 
     return () => {
       isCurrent = false;
     };
   }, [address]);
 
-  // If geocoded to coordinates, render Leaflet Map
-  if (coords) {
-    return <MapPanel lat={coords.lat} lng={coords.lng} label={address} from={from} height={220} />;
-  }
-
-  const searchUrl = `https://www.openstreetmap.org/search?query=${encodeURIComponent(address)}`;
+  // Coordinates found (or fallback postal code resolved)
+  const mapLat = coords?.lat ?? (from ? from[0] : DEFAULT_CENTER[0]);
+  const mapLng = coords?.lng ?? (from ? from[1] : DEFAULT_CENTER[1]);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <div className="flex flex-col items-center justify-center gap-2 p-6 bg-muted/40 text-center" style={{ height: 180 }}>
-        {searching ? (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin text-primary" /> Locating address on OpenStreetMap...
-          </div>
-        ) : (
-          <>
-            <div className="rounded-full bg-primary/10 p-3 text-primary">
-              <Store className="h-6 w-6" />
-            </div>
-            <div className="space-y-0.5 max-w-sm">
-              <p className="text-xs font-semibold text-foreground truncate">{label}</p>
-              <p className="text-xs text-muted-foreground line-clamp-2">{address}</p>
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between gap-3 border-t border-border bg-card px-3 py-2">
-        <span className="truncate text-xs text-muted-foreground">{address}</span>
-        <Button asChild size="sm" variant="secondary">
-          <a href={searchUrl} target="_blank" rel="noreferrer">
-            <Navigation className="mr-1 h-3.5 w-3.5" /> Navigate
-          </a>
-        </Button>
-      </div>
-    </div>
+    <MapPanel
+      lat={mapLat}
+      lng={mapLng}
+      label={label ? `${label} (${address})` : address}
+      from={from}
+      height={220}
+    />
   );
 }
