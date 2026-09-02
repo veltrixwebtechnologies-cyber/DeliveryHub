@@ -20,7 +20,7 @@ export function MapPanel({ lat, lng, label, from = null, height = 220 }: Props) 
       </div>
     );
   }
-  const direct = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${lat},${lng}`)}${from ? `&origin=${encodeURIComponent(`${from[0]},${from[1]}`)}` : ""}&travelmode=two-wheeler`;
+  const direct = osmDirections(from, [lat, lng]);
   return (
     <div className="overflow-hidden rounded-xl border border-border">
       <iframe
@@ -35,7 +35,7 @@ export function MapPanel({ lat, lng, label, from = null, height = 220 }: Props) 
       <div className="flex items-center justify-between gap-3 border-t border-border bg-card px-3 py-2">
         <span className="truncate text-xs text-muted-foreground">{label}</span>
         <Button asChild size="sm" variant="secondary">
-          <a href={direct || osmDirections(from, [lat, lng])} target="_blank" rel="noreferrer">
+          <a href={direct} target="_blank" rel="noreferrer">
             <Navigation className="mr-1 h-3.5 w-3.5" /> Navigate
           </a>
         </Button>
@@ -56,10 +56,9 @@ type AddressNavigationProps = {
  * being collected or backfilled.
  */
 export function AddressNavigation({ address, label, from = null }: AddressNavigationProps) {
-  const origin = from ? `&origin=${encodeURIComponent(`${from[0]},${from[1]}`)}` : "";
   const destination = encodeURIComponent(address);
-  const directions = `https://www.google.com/maps/dir/?api=1&destination=${destination}${origin}&travelmode=two-wheeler`;
-  const preview = `https://www.google.com/maps?q=${destination}&output=embed`;
+  const directions = `https://www.openstreetmap.org/search?query=${destination}`;
+  const preview = `https://www.openstreetmap.org/export/embed.html?layer=mapnik&query=${destination}`;
 
   return (
     <div className="overflow-hidden rounded-xl border border-border">

@@ -772,7 +772,7 @@ function PartnerLayout() {
               className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
               onClick={() =>
                 window.open(
-                  `https://www.google.com/maps/dir/?api=1&destination=${zoneInfo.zoneLat},${zoneInfo.zoneLng}`,
+                  `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=;${zoneInfo.zoneLat},${zoneInfo.zoneLng}`,
                   "_blank",
                 )
               }
