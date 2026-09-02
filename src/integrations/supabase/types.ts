@@ -814,6 +814,16 @@ export type Database = {
       };
       is_my_partner: { Args: { _partner_id: string }; Returns: boolean };
       my_partner_id: { Args: never; Returns: string };
+      update_delivery_location: {
+        Args: {
+          _assignment_id: string;
+          _latitude: number;
+          _longitude: number;
+          _heading?: number | null;
+          _speed?: number | null;
+        };
+        Returns: Json;
+      };
     };
     Enums: {
       app_role: "admin" | "vendor" | "delivery_partner" | "customer";

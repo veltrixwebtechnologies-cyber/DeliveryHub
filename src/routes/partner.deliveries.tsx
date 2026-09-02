@@ -16,6 +16,7 @@ import { usePartner } from "@/hooks/usePartner";
 import { ACTIVE_ASSIGNMENT_STATUSES, DELIVERY_FLOW, INR, nextFlowStep } from "@/lib/delivery";
 import { DELIVERY_ORDER_SELECT, normalizeAssignment, normalizeOrder } from "@/lib/shared-orders";
 import { SafetyActions } from "@/components/delivery/SafetyActions";
+import { deliveryTracker } from "@/services/delivery-location-tracker";
 
 export const Route = createFileRoute("/partner/deliveries")({
   component: Deliveries,
@@ -146,6 +147,17 @@ function Deliveries() {
     const timer = window.setInterval(tick, 1000);
     return () => window.clearInterval(timer);
   }, [contactWaitUntil]);
+
+  useEffect(() => {
+    if (active?.id) {
+      deliveryTracker.startTracking(active.id);
+    } else {
+      deliveryTracker.stopTracking();
+    }
+    return () => {
+      deliveryTracker.stopTracking();
+    };
+  }, [active?.id]);
 
   async function advance() {
     if (!active || completionInFlightRef.current) return;
