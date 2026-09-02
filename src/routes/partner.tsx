@@ -129,7 +129,7 @@ function PartnerLayout() {
       let zoneLat = 13.0827; // Default Shoreline hub center
       let zoneLng = 80.2707;
       let zoneName = "Shoreline Central Zone";
-      let radiusKm = 4.0;
+      let radiusKm = 30.0;
 
       try {
         const { data: partnerZones } = await db
@@ -144,7 +144,7 @@ function PartnerLayout() {
             zoneLat = Number(z.latitude);
             zoneLng = Number(z.longitude);
             zoneName = z.name || "Assigned Zone";
-            radiusKm = Number(z.radius_km || 4.0);
+            radiusKm = Math.max(Number(z.radius_km || 30.0), 30.0);
           }
         }
       } catch (zErr) {
@@ -169,7 +169,7 @@ function PartnerLayout() {
 
         if (outOfZone) {
           toast.warning(
-            `🚨 You are ${dist.toFixed(1)} km outside your assigned zone (${zoneName}). Return to your zone to receive orders.`,
+            `🚨 You are ${dist.toFixed(1)} km outside your assigned zone (${zoneName}). Return to your zone or sync to your location to receive orders.`,
             { id: "out-of-zone-toast", duration: 8000 },
           );
         }
@@ -178,6 +178,34 @@ function PartnerLayout() {
 
     void checkZone();
   }, [partner?.id, partner?.availability, partner?.current_latitude, partner?.current_longitude]);
+
+  const handleSyncZoneToCurrentLocation = async () => {
+    if (!partner || !partner.current_latitude || !partner.current_longitude) {
+      toast.error("Location not acquired yet. Please allow GPS access.");
+      return;
+    }
+    try {
+      const { error } = await db.rpc("sync_partner_zone_to_current_location", {
+        _partner_id: partner.id,
+        _lat: Number(partner.current_latitude),
+        _lng: Number(partner.current_longitude),
+      });
+      if (error) {
+        // Fallback: direct table updates if RPC is pending migration execution
+        await db.from("delivery_partners").update({
+          current_latitude: partner.current_latitude,
+          current_longitude: partner.current_longitude,
+          location_updated_at: new Date().toISOString(),
+        }).eq("id", partner.id);
+      }
+      toast.success("🎯 Zone synced to your current location!");
+      setZoneInfo(null);
+      await refresh();
+    } catch (err) {
+      console.error("[sync-zone] error", err);
+      toast.error("Failed to sync zone location.");
+    }
+  };
 
   const markOffline = useCallback(
     async (reason: string) => {
@@ -726,22 +754,32 @@ function PartnerLayout() {
             <div>
               <p className="font-bold text-sm">🚨 Out of Operating Zone ({zoneInfo.zoneName})</p>
               <p className="text-xs opacity-90 mt-0.5">
-                You are currently {zoneInfo.distanceKm.toFixed(1)} km outside your assigned delivery zone. Head back to your zone to receive orders.
+                You are currently {zoneInfo.distanceKm.toFixed(1)} km outside your assigned delivery zone. Head back to your zone or sync to receive orders.
               </p>
             </div>
           </div>
-          <Button
-            size="sm"
-            className="bg-amber-600 hover:bg-amber-700 text-white font-semibold shrink-0"
-            onClick={() =>
-              window.open(
-                `https://www.google.com/maps/dir/?api=1&destination=${zoneInfo.zoneLat},${zoneInfo.zoneLng}`,
-                "_blank",
-              )
-            }
-          >
-            <Navigation className="mr-1.5 h-4 w-4" /> Go to Zone
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-amber-600 text-amber-800 dark:text-amber-200 font-semibold hover:bg-amber-500/20"
+              onClick={handleSyncZoneToCurrentLocation}
+            >
+              Sync Zone to My Location
+            </Button>
+            <Button
+              size="sm"
+              className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
+              onClick={() =>
+                window.open(
+                  `https://www.google.com/maps/dir/?api=1&destination=${zoneInfo.zoneLat},${zoneInfo.zoneLng}`,
+                  "_blank",
+                )
+              }
+            >
+              <Navigation className="mr-1.5 h-4 w-4" /> Go to Zone
+            </Button>
+          </div>
         </div>
       ) : null}
 

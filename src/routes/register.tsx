@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Bike, Check, Loader2, Upload } from "lucide-react";
+import { Bike, Check, Eye, EyeOff, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -841,6 +841,7 @@ function StepAccount({
   setBusy: (b: boolean) => void;
   onDone: (p: Record<string, any>) => void;
 }) {
+  const [showPassword, setShowPassword] = useState(false);
   const [values, setValues] = useState({
     ["full_name"]: currentUserName ?? "",
     mobile: "",
@@ -947,11 +948,22 @@ function StepAccount({
       </Field>
       {!currentUserId ? (
         <Field label="Password">
-          <Input
-            type="password"
-            value={values.password}
-            onChange={(e) => setValues({ ...values, password: e.target.value })}
-          />
+          <div className="relative">
+            <Input
+              type={showPassword ? "text" : "password"}
+              value={values.password}
+              onChange={(e) => setValues({ ...values, password: e.target.value })}
+              className="pr-10"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </Field>
       ) : (
         <p className="text-sm text-muted-foreground">Using your existing Local Shore account.</p>

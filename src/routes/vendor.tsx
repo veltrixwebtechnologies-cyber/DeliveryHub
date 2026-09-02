@@ -73,6 +73,15 @@ type SellerOrder = {
   customer_name: string;
   order_total: number;
   created_at: string;
+  assigned_partner?: {
+    id: string;
+    full_name: string;
+    mobile: string;
+    status: string;
+    vehicle_type?: string;
+    rating?: number;
+  } | null;
+  delivery_assignment?: any;
 };
 
 type HealthMetric = { label: string; value: string; score: number; tone: string };
@@ -856,6 +865,7 @@ function RecentOrders({
                   <th className="pb-3 font-semibold">Customer</th>
                   <th className="pb-3 font-semibold">Amount</th>
                   <th className="pb-3 font-semibold">Status</th>
+                  <th className="pb-3 font-semibold">Delivery Partner</th>
                   <th className="pb-3 font-semibold">Date</th>
                   <th className="pb-3 text-right font-semibold">Action</th>
                 </tr>
@@ -871,6 +881,24 @@ function RecentOrders({
                     <td className="py-3 font-semibold">{INR(order.order_total)}</td>
                     <td className="py-3">
                       <OrderPill status={order.status} />
+                    </td>
+                    <td className="py-3 text-xs">
+                      {order.assigned_partner ? (
+                        <div>
+                          <div className="font-semibold text-emerald-600 dark:text-emerald-400">
+                            {order.assigned_partner.full_name}
+                          </div>
+                          <div className="text-[10px] text-slate-500">
+                            {order.assigned_partner.mobile}
+                          </div>
+                        </div>
+                      ) : order.status === "ready_for_pickup" ? (
+                        <span className="text-[10px] text-amber-600 font-medium animate-pulse">
+                          Dispatching partner...
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-400">Unassigned</span>
+                      )}
                     </td>
                     <td className="py-3 text-slate-500">
                       {new Date(order.created_at).toLocaleDateString("en-IN", {
