@@ -128,9 +128,13 @@ function Documents() {
           <CardContent className="flex items-start gap-3.5 p-4">
             <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <div>
-              <h3 className="font-semibold text-sm">⏳ Application & Document Verification Pending</h3>
+              <h3 className="font-semibold text-sm">
+                ⏳ Application & Document Verification Pending
+              </h3>
               <p className="text-xs opacity-90 mt-1">
-                Your profile and uploaded documents are currently being reviewed by the LocalShore Admin team. It will take up to 24 hours to review and wait for admin approval. Once approved, all delivery features will unlock automatically.
+                Your profile and uploaded documents are currently being reviewed by the LocalShore
+                Admin team. It will take up to 24 hours to review and wait for admin approval. Once
+                approved, all delivery features will unlock automatically.
               </p>
             </div>
           </CardContent>

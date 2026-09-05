@@ -1,6 +1,6 @@
 /**
  * LiveNavigationMap — Full-screen Leaflet navigation map for delivery driver
- * 
+ *
  * Features:
  * - Real GPS driver position with smooth animation
  * - Road-following OSRM route polyline
@@ -14,7 +14,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MapLocation, RouteResult } from "@/lib/delivery-routing";
-import { formatDistanceShort } from "@/lib/delivery-routing";
 
 import { getMapTileConfig } from "@/lib/map-provider";
 
@@ -78,6 +77,18 @@ function pulseCircleSvg(color: string): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
+function isValidLocation(lat: number, lng: number): boolean {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lng) <= 180 &&
+    !(lat === 0 && lng === 0)
+  );
+}
+
+const DEFAULT_VISUAL_CENTER: [number, number] = [11.02, 76.99];
+
 // ── Component ──────────────────────────────────────────────────────
 
 export function LiveNavigationMap({
@@ -117,12 +128,17 @@ export function LiveNavigationMap({
 
         LRef.current = L;
 
-        // Start at destination or default location
-        const center: [number, number] = driverPos
-          ? [driverPos.lat, driverPos.lng]
-          : destination
-          ? [destination.lat, destination.lng]
-          : [11.0168, 76.9558]; // Coimbatore default
+        // Start at destination or a visual-only fallback location.
+        const center: [number, number] =
+          driverPos && isValidLocation(driverPos.lat, driverPos.lng)
+            ? [driverPos.lat, driverPos.lng]
+            : destination
+              ? [destination.lat, destination.lng]
+              : vendorLocation && isValidLocation(vendorLocation.lat, vendorLocation.lng)
+                ? [vendorLocation.lat, vendorLocation.lng]
+                : customerLocation && isValidLocation(customerLocation.lat, customerLocation.lng)
+                  ? [customerLocation.lat, customerLocation.lng]
+                  : DEFAULT_VISUAL_CENTER;
 
         const map = L.map(containerRef.current, {
           center,
@@ -180,7 +196,13 @@ export function LiveNavigationMap({
 
   // ── Marker update helper with smooth animation ──
   const upsertMarker = useCallback(
-    (id: string, pos: { lat: number; lng: number } | null, iconUrl: string, size: [number, number], anchor?: [number, number]) => {
+    (
+      id: string,
+      pos: { lat: number; lng: number } | null,
+      iconUrl: string,
+      size: [number, number],
+      anchor?: [number, number],
+    ) => {
       const map = mapRef.current;
       const L = LRef.current;
       if (!map || !L) return;
@@ -201,7 +223,10 @@ export function LiveNavigationMap({
 
       let marker = markersRef.current[id];
       if (!marker) {
-        marker = L.marker([pos.lat, pos.lng], { icon, zIndexOffset: id === "driver" ? 1000 : 500 }).addTo(map);
+        marker = L.marker([pos.lat, pos.lng], {
+          icon,
+          zIndexOffset: id === "driver" ? 1000 : 500,
+        }).addTo(map);
         markersRef.current[id] = marker;
       } else {
         marker.setIcon(icon);
@@ -227,7 +252,7 @@ export function LiveNavigationMap({
         }
       }
     },
-    []
+    [],
   );
 
   // ── Update markers when positions change ──
@@ -238,14 +263,9 @@ export function LiveNavigationMap({
     if (!L || !map) return;
 
     // Driver marker with heading rotation
-    if (driverPos) {
+    if (driverPos && isValidLocation(driverPos.lat, driverPos.lng)) {
       const driverColor = isOffRoute ? "#EF4444" : isStale ? "#F59E0B" : "#10B981";
-      upsertMarker(
-        "driver",
-        driverPos,
-        driverMarkerSvg(driverPos.heading, driverColor),
-        [48, 48]
-      );
+      upsertMarker("driver", driverPos, driverMarkerSvg(driverPos.heading, driverColor), [48, 48]);
 
       // GPS accuracy pulse circle
       if (!pulseRef.current) {
@@ -268,15 +288,36 @@ export function LiveNavigationMap({
     // Vendor marker
     if (vendorLocation) {
       const vendorColor = phase === "to_vendor" ? "#8B5CF6" : "#6B7280";
-      upsertMarker("vendor", vendorLocation, destinationPinSvg(vendorColor, "🏪"), [36, 48], [18, 48]);
+      upsertMarker(
+        "vendor",
+        vendorLocation,
+        destinationPinSvg(vendorColor, "🏪"),
+        [36, 48],
+        [18, 48],
+      );
     }
 
     // Customer marker
     if (customerLocation) {
       const customerColor = phase === "to_customer" ? "#E3A72E" : "#6B7280";
-      upsertMarker("customer", customerLocation, destinationPinSvg(customerColor, "🏠"), [36, 48], [18, 48]);
+      upsertMarker(
+        "customer",
+        customerLocation,
+        destinationPinSvg(customerColor, "🏠"),
+        [36, 48],
+        [18, 48],
+      );
     }
-  }, [driverPos, vendorLocation, customerLocation, phase, isOffRoute, isStale, mapReady, upsertMarker]);
+  }, [
+    driverPos,
+    vendorLocation,
+    customerLocation,
+    phase,
+    isOffRoute,
+    isStale,
+    mapReady,
+    upsertMarker,
+  ]);
 
   // ── Update route polyline ──
   useEffect(() => {
@@ -292,19 +333,24 @@ export function LiveNavigationMap({
 
     if (route?.geometry && route.geometry.length > 0) {
       const latLngs = route.geometry.map(([lng, lat]: [number, number]) => [lat, lng]);
-      
-      const routeColor = phase === "to_vendor" ? "#8B5CF6" : "#3B82F6";
-      
-      polylineRef.current = L.polyline(latLngs, {
-        color: routeColor,
-        weight: 6,
-        opacity: 0.9,
-        lineCap: "round",
-        lineJoin: "round",
-      }).addTo(map);
+
+      const routeColor = phase === "to_vendor" ? "#8B5CF6" : "#3B82E6";
+      const routeStyle =
+        route.status === "success"
+          ? { color: routeColor, weight: 6, opacity: 0.9, lineCap: "round", lineJoin: "round" }
+          : {
+              color: "#94A3B8",
+              weight: 4,
+              opacity: 0.75,
+              dashArray: "8 8",
+              lineCap: "round",
+              lineJoin: "round",
+            };
+
+      polylineRef.current = L.polyline(latLngs, routeStyle).addTo(map);
 
       // Only auto-fit bounds on initial load if not panning
-      if (!isUserPanning) {
+      if (!isUserPanning && route.status === "success") {
         try {
           const bounds = polylineRef.current.getBounds();
           if (bounds.isValid()) {
@@ -358,6 +404,15 @@ export function LiveNavigationMap({
         </div>
       )}
 
+      {route?.status && route.status !== "success" && (
+        <div className="absolute bottom-16 left-3 z-[500] max-w-[calc(100%-1.5rem)] rounded-lg bg-slate-950/90 px-3 py-2 text-white shadow-lg backdrop-blur-sm">
+          <p className="text-xs font-semibold">
+            {route.status === "fallback" ? "Road route unavailable." : "Route unavailable."}
+          </p>
+          <p className="text-[10px] text-slate-300">Showing a preview connection only.</p>
+        </div>
+      )}
+
       {/* Stale GPS indicator */}
       {isStale && (
         <div className="absolute top-3 left-3 right-3 z-[500] rounded-xl bg-amber-600/95 px-4 py-2 text-white shadow-lg backdrop-blur-sm text-center">
@@ -377,7 +432,9 @@ export function LiveNavigationMap({
             <span className="absolute h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
             <span className="relative h-2 w-2 rounded-full bg-emerald-400" />
           </div>
-          <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Recenter Map</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+            Recenter Map
+          </span>
         </button>
       )}
     </div>

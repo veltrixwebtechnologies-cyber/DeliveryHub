@@ -1,6 +1,6 @@
 /**
  * DeliveryNavigationScreen — Full Swiggy/Zomato-style real-time delivery navigation
- * 
+ *
  * This is a dedicated mobile-first navigation view for the delivery partner.
  * It replaces the static MapPanel with:
  * - Live GPS tracking on Leaflet + OSM
@@ -19,9 +19,10 @@ import { useDriverNavigation, type ArrivalZone } from "@/hooks/useDriverNavigati
 import { LiveNavigationMap } from "@/components/delivery/LiveNavigationMap";
 import { NavigationBar } from "@/components/delivery/NavigationBar";
 import { StatusBadge } from "@/components/delivery/StatusBadge";
-import { Button } from "@/components/ui/button";
 import { DELIVERY_FLOW, nextFlowStep, INR, ASSIGNMENT_STATUS_LABEL } from "@/lib/delivery";
+import { isValidCoordinate } from "@/lib/geo";
 import { ChevronDown, ChevronUp, MapPin, Navigation, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
 interface DeliveryNavigationScreenProps {
@@ -56,16 +57,16 @@ export function DeliveryNavigationScreen({
 
   // ── Parse locations ──
   const vendorLocation = useMemo(() => {
-    const lat = Number(vendor?.latitude ?? vendor?.lat);
-    const lng = Number(vendor?.longitude ?? vendor?.lng);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    const lat = vendor?.latitude ?? vendor?.lat;
+    const lng = vendor?.longitude ?? vendor?.lng;
+    if (isValidCoordinate(lat, lng)) return { lat, lng };
     return null;
   }, [vendor]);
 
   const customerLocation = useMemo(() => {
-    const lat = Number(order?.customer_latitude);
-    const lng = Number(order?.customer_longitude);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    const lat = order?.customer_latitude;
+    const lng = order?.customer_longitude;
+    if (isValidCoordinate(lat, lng)) return { lat, lng };
     return null;
   }, [order]);
 
@@ -105,7 +106,10 @@ export function DeliveryNavigationScreen({
     }
 
     // At vendor: show "Confirm Pickup" prominently
-    if (nav.arrivalZone === "at_vendor" && (active.status === "accepted" || active.status === "navigating_to_vendor")) {
+    if (
+      nav.arrivalZone === "at_vendor" &&
+      (active.status === "accepted" || active.status === "navigating_to_vendor")
+    ) {
       return { label: "I've arrived at the shop", enabled: true, highlight: true };
     }
     if (nav.arrivalZone === "at_vendor" && active.status === "reached_vendor") {
@@ -199,6 +203,8 @@ export function DeliveryNavigationScreen({
             accuracy={nav.accuracy}
             speed={nav.speed}
             followMode={nav.followMode}
+            gpsStatus={nav.gpsStatus}
+            gpsMessage={nav.gpsMessage}
             onRecenter={handleRecenter}
             onRefreshRoute={nav.forceRefreshRoute}
           />
@@ -214,15 +220,23 @@ export function DeliveryNavigationScreen({
             <MapPin className="h-3 w-3" />
             {panelExpanded ? "Hide order details" : "Show order details"}
           </span>
-          {panelExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
+          {panelExpanded ? (
+            <ChevronDown className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronUp className="h-3.5 w-3.5" />
+          )}
         </button>
 
         {panelExpanded && (
           <div className="border-t border-border px-4 py-3 space-y-3 max-h-44 overflow-y-auto">
             {/* Pickup info */}
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Pickup</p>
-              <p className="text-sm font-medium text-foreground">{vendor?.shop_name || vendor?.business_name}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Pickup
+              </p>
+              <p className="text-sm font-medium text-foreground">
+                {vendor?.shop_name || vendor?.business_name}
+              </p>
               <p className="text-xs text-muted-foreground">{vendor?.address}</p>
               <button
                 type="button"
@@ -234,9 +248,15 @@ export function DeliveryNavigationScreen({
             </div>
             {/* Drop info */}
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Drop</p>
-              <p className="text-sm font-medium text-foreground">{order?.customer_name || order?.buyer_name}</p>
-              <p className="text-xs text-muted-foreground">{order?.customer_address || order?.buyer_address}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Drop
+              </p>
+              <p className="text-sm font-medium text-foreground">
+                {order?.customer_name || order?.buyer_name}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {order?.customer_address || order?.buyer_address}
+              </p>
               <button
                 type="button"
                 className="mt-1 text-xs text-primary font-medium underline"
@@ -248,10 +268,14 @@ export function DeliveryNavigationScreen({
             {/* Items */}
             {order?.items?.length > 0 && (
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Items</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Items
+                </p>
                 <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
                   {order.items.map((it: any, i: number) => (
-                    <li key={i}>{it.qty ?? 1} × {it.name}</li>
+                    <li key={i}>
+                      {it.qty ?? 1} × {it.name}
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -303,11 +327,14 @@ export function DeliveryNavigationScreen({
               </button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Ask the customer for the delivery OTP code or upload proof of delivery photo to complete order.
+              Ask the customer for the delivery OTP code or upload proof of delivery photo to
+              complete order.
             </p>
 
             <div className="space-y-2">
-              <label htmlFor="modal-otp" className="text-xs font-semibold text-foreground">Customer OTP (4-6 digits)</label>
+              <label htmlFor="modal-otp" className="text-xs font-semibold text-foreground">
+                Customer OTP (4-6 digits)
+              </label>
               <input
                 id="modal-otp"
                 type="text"
@@ -321,8 +348,12 @@ export function DeliveryNavigationScreen({
             </div>
 
             <div className="relative flex items-center justify-center my-2">
-              <span className="bg-card px-2 text-[10px] text-muted-foreground uppercase font-semibold">Or photo proof</span>
-              <div className="absolute inset-0 -z-10 flex items-center"><div className="w-full border-t border-border" /></div>
+              <span className="bg-card px-2 text-[10px] text-muted-foreground uppercase font-semibold">
+                Or photo proof
+              </span>
+              <div className="absolute inset-0 -z-10 flex items-center">
+                <div className="w-full border-t border-border" />
+              </div>
             </div>
 
             <div>

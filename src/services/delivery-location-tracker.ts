@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { isValidCoordinate } from "@/lib/geo";
 
 export interface GPSPosition {
   latitude: number;
@@ -84,7 +85,7 @@ class DeliveryLocationTracker {
         enableHighAccuracy: true,
         timeout: 10000,
         maximumAge: 3000,
-      }
+      },
     );
   }
 
@@ -106,6 +107,10 @@ class DeliveryLocationTracker {
     const now = Date.now();
     const { latitude, longitude, heading, speed, accuracy } = position.coords;
 
+    if (!isValidCoordinate(latitude, longitude)) {
+      return;
+    }
+
     const newPos: GPSPosition = {
       latitude,
       longitude,
@@ -126,7 +131,7 @@ class DeliveryLocationTracker {
         this.lastSentPosition.latitude,
         this.lastSentPosition.longitude,
         latitude,
-        longitude
+        longitude,
       );
       if (movedMeters < 3.0 && now - this.lastSentTime < 15000) {
         return;

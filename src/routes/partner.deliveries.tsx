@@ -19,6 +19,16 @@ import { DELIVERY_ORDER_SELECT, normalizeAssignment, normalizeOrder } from "@/li
 import { SafetyActions } from "@/components/delivery/SafetyActions";
 import { deliveryTracker } from "@/services/delivery-location-tracker";
 
+function isValidLocation(lat: number, lng: number): boolean {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lng) <= 180 &&
+    !(lat === 0 && lng === 0)
+  );
+}
+
 export const Route = createFileRoute("/partner/deliveries")({
   component: Deliveries,
   head: () => ({
@@ -300,17 +310,26 @@ function Deliveries() {
   const step = active ? DELIVERY_FLOW.findIndex((s) => s.status === active.status) : -1;
   const next = active ? nextFlowStep(active.status) : null;
   const dropping = active?.status === "out_for_delivery";
-  const from: [number, number] | null =
-    Number.isFinite(partner.current_latitude) && Number.isFinite(partner.current_longitude)
-      ? [partner.current_latitude!, partner.current_longitude!]
-      : null;
-  const hasCustomerCoordinates =
-    Number.isFinite(order?.customer_latitude) && Number.isFinite(order?.customer_longitude);
-  const hasVendorCoordinates =
-    Number.isFinite(vendor?.latitude) && Number.isFinite(vendor?.longitude);
+  const from: [number, number] | null = isValidLocation(
+    Number(partner.current_latitude),
+    Number(partner.current_longitude),
+  )
+    ? [Number(partner.current_latitude), Number(partner.current_longitude)]
+    : null;
+  const hasCustomerCoordinates = isValidLocation(
+    Number(order?.customer_latitude),
+    Number(order?.customer_longitude),
+  );
+  const hasVendorCoordinates = isValidLocation(Number(vendor?.latitude), Number(vendor?.longitude));
 
   // Navigation statuses: show full-screen nav map for these
-  const isNavigationStatus = ["accepted", "navigating_to_vendor", "reached_vendor", "picked_up", "out_for_delivery"].includes(active?.status ?? "");
+  const isNavigationStatus = [
+    "accepted",
+    "navigating_to_vendor",
+    "reached_vendor",
+    "picked_up",
+    "out_for_delivery",
+  ].includes(active?.status ?? "");
 
   // Full-screen navigation mode
   if (active && navMode && isNavigationStatus) {
@@ -353,239 +372,239 @@ function Deliveries() {
         />
       ) : (
         <>
-        {/* Navigation Mode Toggle */}
-        {isNavigationStatus && (
-          <Button
-            type="button"
-            variant="default"
-            className="w-full h-12 text-base font-semibold gap-2 bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/20"
-            onClick={() => setNavMode(true)}
-          >
-            <Map className="h-5 w-5" />
-            Open Live Navigation
-          </Button>
-        )}
+          {/* Navigation Mode Toggle */}
+          {isNavigationStatus && (
+            <Button
+              type="button"
+              variant="default"
+              className="w-full h-12 text-base font-semibold gap-2 bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/20"
+              onClick={() => setNavMode(true)}
+            >
+              <Map className="h-5 w-5" />
+              Open Live Navigation
+            </Button>
+          )}
 
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">
-              <span>{order?.order_code}</span>
-              <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                Order total: {INR(Number(order?.order_total ?? 0))} · Partner earning:{" "}
-                {INR(active.estimated_earning)}
-              </span>
-            </CardTitle>
-            <StatusBadge status={active.status} />
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <ol className="flex flex-wrap gap-2">
-              {DELIVERY_FLOW.map((s, i) => (
-                <li
-                  key={s.status}
-                  className={
-                    "rounded-full px-3 py-1 text-xs font-medium " +
-                    (i <= step
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground")
-                  }
-                >
-                  {s.label}
-                </li>
-              ))}
-            </ol>
+          <Card>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base">
+                <span>{order?.order_code}</span>
+                <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                  Order total: {INR(Number(order?.order_total ?? 0))} · Partner earning:{" "}
+                  {INR(active.estimated_earning)}
+                </span>
+              </CardTitle>
+              <StatusBadge status={active.status} />
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <ol className="flex flex-wrap gap-2">
+                {DELIVERY_FLOW.map((s, i) => (
+                  <li
+                    key={s.status}
+                    className={
+                      "rounded-full px-3 py-1 text-xs font-medium " +
+                      (i <= step
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground")
+                    }
+                  >
+                    {s.label}
+                  </li>
+                ))}
+              </ol>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-foreground">Pickup</p>
-                <p className="text-sm text-muted-foreground">
-                  {vendor?.shop_name}
-                  <br />
-                  {vendor?.address}
-                </p>
-                <Button size="sm" variant="secondary" onClick={() => requestContact("vendor")}>
-                  <Phone className="mr-1 h-3.5 w-3.5" /> Call shop
-                </Button>
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-foreground">Drop</p>
-                <p className="text-sm text-muted-foreground">
-                  {order?.customer_name}
-                  <br />
-                  {order?.customer_address}
-                </p>
-                <Button size="sm" variant="secondary" onClick={() => requestContact("customer")}>
-                  <Phone className="mr-1 h-3.5 w-3.5" /> Call customer
-                </Button>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span>
-                    {contactAttempts} call attempt{contactAttempts === 1 ? "" : "s"}
-                  </span>
-                  {contactRemaining > 0 ? (
-                    <span className="inline-flex items-center gap-1">
-                      <Clock3 className="h-3.5 w-3.5" /> Wait {Math.floor(contactRemaining / 60)}:
-                      {String(contactRemaining % 60).padStart(2, "0")}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-foreground">Pickup</p>
+                  <p className="text-sm text-muted-foreground">
+                    {vendor?.shop_name}
+                    <br />
+                    {vendor?.address}
+                  </p>
+                  <Button size="sm" variant="secondary" onClick={() => requestContact("vendor")}>
+                    <Phone className="mr-1 h-3.5 w-3.5" /> Call shop
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-foreground">Drop</p>
+                  <p className="text-sm text-muted-foreground">
+                    {order?.customer_name}
+                    <br />
+                    {order?.customer_address}
+                  </p>
+                  <Button size="sm" variant="secondary" onClick={() => requestContact("customer")}>
+                    <Phone className="mr-1 h-3.5 w-3.5" /> Call customer
+                  </Button>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span>
+                      {contactAttempts} call attempt{contactAttempts === 1 ? "" : "s"}
                     </span>
-                  ) : null}
-                  {contactAttempts > 0 && contactRemaining === 0 ? (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={contactBusy}
-                        onClick={() => void markCustomerUnreachable("mark_unreachable")}
-                      >
-                        Mark unreachable
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={contactBusy}
-                        onClick={() => void markCustomerUnreachable("escalate")}
-                      >
-                        Escalate support
-                      </Button>
-                    </>
-                  ) : null}
+                    {contactRemaining > 0 ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Clock3 className="h-3.5 w-3.5" /> Wait {Math.floor(contactRemaining / 60)}:
+                        {String(contactRemaining % 60).padStart(2, "0")}
+                      </span>
+                    ) : null}
+                    {contactAttempts > 0 && contactRemaining === 0 ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={contactBusy}
+                          onClick={() => void markCustomerUnreachable("mark_unreachable")}
+                        >
+                          Mark unreachable
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={contactBusy}
+                          onClick={() => void markCustomerUnreachable("escalate")}
+                        >
+                          Escalate support
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {dropping ? (
-              hasCustomerCoordinates ? (
-                <MapPanel
-                  lat={order.customer_latitude}
-                  lng={order.customer_longitude}
-                  label={order.customer_address}
-                  from={from}
-                />
-              ) : order?.customer_address ? (
-                <AddressNavigation
-                  address={order.customer_address}
-                  label="Customer delivery location"
-                  from={from}
-                />
-              ) : null
-            ) : hasVendorCoordinates ? (
-              <MapPanel
-                lat={vendor.latitude}
-                lng={vendor.longitude}
-                label={vendor.address}
-                from={from}
-              />
-            ) : vendor?.address ? (
-              <AddressNavigation
-                address={vendor.address}
-                label={vendor.shop_name ?? "Pickup location"}
-                from={from}
-              />
-            ) : (
-              <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-                Pickup address is unavailable. Use “Call shop” to confirm the location.
-              </div>
-            )}
-
-            {order?.items?.length ? (
-              <div className="rounded-lg bg-secondary p-3">
-                <p className="text-sm font-semibold text-foreground">Items</p>
-                <ul className="mt-1 space-y-1 text-sm text-muted-foreground">
-                  {order.items.map((it: any, i: number) => (
-                    <li key={i}>
-                      {it.qty ?? 1} × {it.name}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            {next?.status === "delivered" ? (
-              <div className="space-y-3 rounded-lg border border-border p-4">
-                <p className="text-sm font-semibold text-foreground">Delivery verification</p>
-                <div className="space-y-2">
-                  <Label htmlFor="otp">Customer OTP (4–6 digits)</Label>
-                  <Input
-                    id="otp"
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder="Enter customer OTP"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+              {dropping ? (
+                hasCustomerCoordinates ? (
+                  <MapPanel
+                    lat={order.customer_latitude}
+                    lng={order.customer_longitude}
+                    label={order.customer_address}
+                    from={from}
                   />
+                ) : order?.customer_address ? (
+                  <AddressNavigation
+                    address={order.customer_address}
+                    label="Customer delivery location"
+                    from={from}
+                  />
+                ) : null
+              ) : hasVendorCoordinates ? (
+                <MapPanel
+                  lat={vendor.latitude}
+                  lng={vendor.longitude}
+                  label={vendor.address}
+                  from={from}
+                />
+              ) : vendor?.address ? (
+                <AddressNavigation
+                  address={vendor.address}
+                  label={vendor.shop_name ?? "Pickup location"}
+                  from={from}
+                />
+              ) : (
+                <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+                  Pickup address is unavailable. Use “Call shop” to confirm the location.
                 </div>
-                <Separator />
-                <div className="space-y-2">
-                  <Label>Or upload a proof photo</Label>
-                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground hover:bg-muted">
-                    <Camera className="h-4 w-4" />
-                    {photo ? photo.name : "Take or choose a photo"}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      className="hidden"
-                      onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
+              )}
+
+              {order?.items?.length ? (
+                <div className="rounded-lg bg-secondary p-3">
+                  <p className="text-sm font-semibold text-foreground">Items</p>
+                  <ul className="mt-1 space-y-1 text-sm text-muted-foreground">
+                    {order.items.map((it: any, i: number) => (
+                      <li key={i}>
+                        {it.qty ?? 1} × {it.name}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {next?.status === "delivered" ? (
+                <div className="space-y-3 rounded-lg border border-border p-4">
+                  <p className="text-sm font-semibold text-foreground">Delivery verification</p>
+                  <div className="space-y-2">
+                    <Label htmlFor="otp">Customer OTP (4–6 digits)</Label>
+                    <Input
+                      id="otp"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="Enter customer OTP"
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
                     />
-                  </label>
+                  </div>
+                  <Separator />
+                  <div className="space-y-2">
+                    <Label>Or upload a proof photo</Label>
+                    <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground hover:bg-muted">
+                      <Camera className="h-4 w-4" />
+                      {photo ? photo.name : "Take or choose a photo"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/40 p-4 dark:border-amber-900 dark:bg-amber-950/20">
+                <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  Report a delivery issue
+                </p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <select
+                    aria-label="Exception reason"
+                    value={exceptionReason}
+                    onChange={(e) => setExceptionReason(e.target.value)}
+                    className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                  >
+                    {[
+                      ["customer_unavailable", "Customer unavailable"],
+                      ["wrong_address", "Wrong address"],
+                      ["restaurant_closed", "Restaurant closed"],
+                      ["item_unavailable", "Item unavailable"],
+                      ["vehicle_breakdown", "Vehicle breakdown"],
+                      ["weather_issue", "Weather issue"],
+                      ["delivery_refused", "Delivery refused"],
+                      ["other", "Other"],
+                    ].map(([value, text]) => (
+                      <option key={value} value={value}>
+                        {text}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    value={exceptionNotes}
+                    onChange={(e) => setExceptionNotes(e.target.value)}
+                    placeholder="Short note (optional)"
+                    maxLength={500}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={exceptionBusy}
+                    onClick={() => void submitException()}
+                  >
+                    {exceptionBusy ? "Sending…" : "Report"}
+                  </Button>
                 </div>
               </div>
-            ) : null}
 
-            <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/40 p-4 dark:border-amber-900 dark:bg-amber-950/20">
-              <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <AlertTriangle className="h-4 w-4 text-amber-600" />
-                Report a delivery issue
-              </p>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <select
-                  aria-label="Exception reason"
-                  value={exceptionReason}
-                  onChange={(e) => setExceptionReason(e.target.value)}
-                  className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                >
-                  {[
-                    ["customer_unavailable", "Customer unavailable"],
-                    ["wrong_address", "Wrong address"],
-                    ["restaurant_closed", "Restaurant closed"],
-                    ["item_unavailable", "Item unavailable"],
-                    ["vehicle_breakdown", "Vehicle breakdown"],
-                    ["weather_issue", "Weather issue"],
-                    ["delivery_refused", "Delivery refused"],
-                    ["other", "Other"],
-                  ].map(([value, text]) => (
-                    <option key={value} value={value}>
-                      {text}
-                    </option>
-                  ))}
-                </select>
-                <Input
-                  value={exceptionNotes}
-                  onChange={(e) => setExceptionNotes(e.target.value)}
-                  placeholder="Short note (optional)"
-                  maxLength={500}
-                />
+              {next ? (
                 <Button
                   type="button"
-                  variant="outline"
-                  disabled={exceptionBusy}
-                  onClick={() => void submitException()}
+                  className="w-full"
+                  disabled={busy || (next.status === "delivered" && otp.length < 4 && !photo)}
+                  onClick={advance}
                 >
-                  {exceptionBusy ? "Sending…" : "Report"}
+                  {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  {DELIVERY_FLOW[step]?.action ?? "Continue"}
                 </Button>
-              </div>
-            </div>
-
-            {next ? (
-              <Button
-                type="button"
-                className="w-full"
-                disabled={busy || (next.status === "delivered" && otp.length < 4 && !photo)}
-                onClick={advance}
-              >
-                {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                {DELIVERY_FLOW[step]?.action ?? "Continue"}
-              </Button>
-            ) : null}
-          </CardContent>
-        </Card>
+              ) : null}
+            </CardContent>
+          </Card>
         </>
       )}
 

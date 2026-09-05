@@ -17,7 +17,13 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePartner } from "@/hooks/usePartner";
 import { INR } from "@/lib/delivery";
@@ -68,7 +74,12 @@ const VEHICLES: Vehicle[] = [
     noLicenseNeeded: true,
     cargoCapacity: "35 kg front & rear rack",
     imageUrl: "⚡ EV Scooter",
-    features: ["Unlimited Free Battery Swaps", "No Driving License Required", "Zero Maintenance Fee", "GPS Keyless Lock"],
+    features: [
+      "Unlimited Free Battery Swaps",
+      "No Driving License Required",
+      "Zero Maintenance Fee",
+      "GPS Keyless Lock",
+    ],
   },
   {
     id: "v-ather-450s",
@@ -84,7 +95,12 @@ const VEHICLES: Vehicle[] = [
     noLicenseNeeded: false,
     cargoCapacity: "50 kg Heavy Duty Carrier",
     imageUrl: "🏍️ Fast EV",
-    features: ["Fast Charging (80% in 45 min)", "Turn-by-turn Navigation", "Regenerative Braking", "Insurance Included"],
+    features: [
+      "Fast Charging (80% in 45 min)",
+      "Turn-by-turn Navigation",
+      "Regenerative Braking",
+      "Insurance Included",
+    ],
   },
   {
     id: "v-hero-nyx",
@@ -100,7 +116,12 @@ const VEHICLES: Vehicle[] = [
     noLicenseNeeded: false,
     cargoCapacity: "60 kg Rear Box Carrier",
     imageUrl: "🔋 Dual Battery",
-    features: ["Dual Removable Batteries", "Extra Wide Footboard", "Heavy Duty Suspension", "24/7 Roadside Assistance"],
+    features: [
+      "Dual Removable Batteries",
+      "Extra Wide Footboard",
+      "Heavy Duty Suspension",
+      "24/7 Roadside Assistance",
+    ],
   },
   {
     id: "v-tvs-xl100",
@@ -116,7 +137,12 @@ const VEHICLES: Vehicle[] = [
     noLicenseNeeded: false,
     cargoCapacity: "130 kg Payload capacity",
     imageUrl: "🛵 Cargo Moped",
-    features: ["High Payload Capacity", "Detachable Back Seat", "Low Fuel Consumption", "Full Insurance Cover"],
+    features: [
+      "High Payload Capacity",
+      "Detachable Back Seat",
+      "Low Fuel Consumption",
+      "Full Insurance Cover",
+    ],
   },
   {
     id: "v-eulor-hiload",
@@ -132,12 +158,21 @@ const VEHICLES: Vehicle[] = [
     noLicenseNeeded: false,
     cargoCapacity: "680 kg Closed Cargo Container",
     imageUrl: "🛺 Cargo EV 3-Wheeler",
-    features: ["680 kg Heavy Container", "Fast Charge in 15 mins", "Waterproof Container", "High Earnings Bonus"],
+    features: [
+      "680 kg Heavy Container",
+      "Fast Charge in 15 mins",
+      "Waterproof Container",
+      "High Earnings Bonus",
+    ],
   },
 ];
 
 const RENTAL_HUBS = [
-  { id: "hub-1", name: "Central Hub — Sector 18 Tech Park", address: "Plot 42, Main Arterial Road" },
+  {
+    id: "hub-1",
+    name: "Central Hub — Sector 18 Tech Park",
+    address: "Plot 42, Main Arterial Road",
+  },
   { id: "hub-2", name: "Shoreline North — Beach Road Hub", address: "Opp. Metro Station Gate 3" },
   { id: "hub-3", name: "Airport Station Hub", address: "Freight Terminal Road" },
 ];
@@ -183,7 +218,9 @@ function PartnerRentals() {
       };
       setActiveRental(rental);
       setSelectedVehicle(null);
-      toast.success(`🎉 Rental confirmed! ${selectedVehicle.name} is reserved for pickup at ${rental.hub?.name}.`);
+      toast.success(
+        `🎉 Rental confirmed! ${selectedVehicle.name} is reserved for pickup at ${rental.hub?.name}.`,
+      );
     }, 1000);
   };
 
@@ -201,7 +238,8 @@ function PartnerRentals() {
               EV & Bike Rentals for Delivery
             </h1>
             <p className="max-w-xl text-sm leading-relaxed text-white/80">
-              No vehicle? No problem! Rent a high-range EV scooter or bike directly deducted from your weekly earnings with 24/7 battery swapping & free maintenance.
+              No vehicle? No problem! Rent a high-range EV scooter or bike directly deducted from
+              your weekly earnings with 24/7 battery swapping & free maintenance.
             </p>
           </div>
           <div className="flex flex-col gap-3 min-w-[210px] rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur">
@@ -247,7 +285,9 @@ function PartnerRentals() {
                 variant="outline"
                 size="sm"
                 className="border-emerald-500 text-emerald-700 hover:bg-emerald-500/10"
-                onClick={() => toast.info("Show your Booking ID " + activeRental.id + " at the pickup hub.")}
+                onClick={() =>
+                  toast.info("Show your Booking ID " + activeRental.id + " at the pickup hub.")
+                }
               >
                 View Pass
               </Button>
@@ -260,25 +300,40 @@ function PartnerRentals() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <Tabs defaultValue="all" onValueChange={setFilter} className="w-full sm:w-auto">
           <TabsList className="bg-secondary/60 p-1">
-            <TabsTrigger value="all" className="text-xs">All Vehicles</TabsTrigger>
-            <TabsTrigger value="ev" className="text-xs">⚡ Electric (EV)</TabsTrigger>
-            <TabsTrigger value="petrol" className="text-xs">🛵 Petrol Bikes</TabsTrigger>
-            <TabsTrigger value="cargo" className="text-xs">🛺 Cargo 3-Wheelers</TabsTrigger>
+            <TabsTrigger value="all" className="text-xs">
+              All Vehicles
+            </TabsTrigger>
+            <TabsTrigger value="ev" className="text-xs">
+              ⚡ Electric (EV)
+            </TabsTrigger>
+            <TabsTrigger value="petrol" className="text-xs">
+              🛵 Petrol Bikes
+            </TabsTrigger>
+            <TabsTrigger value="cargo" className="text-xs">
+              🛺 Cargo 3-Wheelers
+            </TabsTrigger>
           </TabsList>
         </Tabs>
         <p className="text-xs text-muted-foreground flex items-center gap-1">
-          <Info className="h-3.5 w-3.5" /> All rentals include full vehicle insurance and maintenance.
+          <Info className="h-3.5 w-3.5" /> All rentals include full vehicle insurance and
+          maintenance.
         </p>
       </div>
 
       {/* Vehicle Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {filteredVehicles.map((vehicle) => (
-          <Card key={vehicle.id} className="overflow-hidden border-border/80 shadow-soft hover:shadow-md transition-all flex flex-col justify-between">
+          <Card
+            key={vehicle.id}
+            className="overflow-hidden border-border/80 shadow-soft hover:shadow-md transition-all flex flex-col justify-between"
+          >
             <div>
               <div className="relative bg-secondary/40 p-6 text-center border-b border-border/60">
                 <div className="text-5xl my-2">{vehicle.imageUrl.split(" ")[0]}</div>
-                <Badge variant="secondary" className="absolute top-3 right-3 text-[10px] font-semibold">
+                <Badge
+                  variant="secondary"
+                  className="absolute top-3 right-3 text-[10px] font-semibold"
+                >
                   {vehicle.tag}
                 </Badge>
                 {vehicle.noLicenseNeeded ? (
@@ -298,12 +353,18 @@ function PartnerRentals() {
               <CardContent className="space-y-4 text-xs">
                 <div className="grid grid-cols-2 gap-2 rounded-xl bg-secondary/50 p-2.5">
                   <div>
-                    <p className="text-[10px] text-muted-foreground uppercase font-semibold">Daily Rate</p>
+                    <p className="text-[10px] text-muted-foreground uppercase font-semibold">
+                      Daily Rate
+                    </p>
                     <p className="font-bold text-foreground">{INR(vehicle.dailyRate)}/day</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground uppercase font-semibold">Weekly Plan</p>
-                    <p className="font-bold text-emerald-600 dark:text-emerald-400">{INR(vehicle.weeklyRate)}/week</p>
+                    <p className="text-[10px] text-muted-foreground uppercase font-semibold">
+                      Weekly Plan
+                    </p>
+                    <p className="font-bold text-emerald-600 dark:text-emerald-400">
+                      {INR(vehicle.weeklyRate)}/week
+                    </p>
                   </div>
                 </div>
 
@@ -353,7 +414,11 @@ function PartnerRentals() {
                   {[
                     { id: "daily", label: "Daily", rate: selectedVehicle.dailyRate },
                     { id: "weekly", label: "Weekly (15% off)", rate: selectedVehicle.weeklyRate },
-                    { id: "monthly", label: "Monthly (30% off)", rate: selectedVehicle.monthlyRate },
+                    {
+                      id: "monthly",
+                      label: "Monthly (30% off)",
+                      rate: selectedVehicle.monthlyRate,
+                    },
                   ].map((plan) => (
                     <button
                       key={plan.id}
@@ -414,7 +479,9 @@ function PartnerRentals() {
                 </div>
                 <div className="border-t border-border pt-2 flex justify-between font-bold text-sm text-foreground">
                   <span>Total Payable</span>
-                  <span className="text-primary text-base">{INR(getTotalCost(selectedVehicle))}</span>
+                  <span className="text-primary text-base">
+                    {INR(getTotalCost(selectedVehicle))}
+                  </span>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
                   *Rental fee will be automatically settled from your weekly delivery payout.
@@ -427,7 +494,9 @@ function PartnerRentals() {
                 className="w-full bg-emerald-600 hover:bg-emerald-700 font-bold"
                 size="lg"
               >
-                {bookingBusy ? "Confirming Rental..." : `Confirm Rental (${INR(getTotalCost(selectedVehicle))})`}
+                {bookingBusy
+                  ? "Confirming Rental..."
+                  : `Confirm Rental (${INR(getTotalCost(selectedVehicle))})`}
               </Button>
             </div>
           ) : null}

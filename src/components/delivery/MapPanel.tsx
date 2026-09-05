@@ -2,32 +2,34 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Navigation, MapPin, Loader2 } from "lucide-react";
 import { osmDirections } from "@/lib/delivery";
+import { isValidCoordinate } from "@/lib/geo";
 
 import { getMapTileConfig } from "@/lib/map-provider";
 
 type Props = {
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   label: string;
   from?: [number, number] | null;
   height?: number;
   markerType?: "destination" | "rider";
+  coordinateStatus?: "exact" | "approximate" | "missing";
 };
 
-export function MapPanel({ lat, lng, label, from = null, height = 220, markerType = "destination" }: Props) {
+export function MapPanel({
+  lat,
+  lng,
+  label,
+  from = null,
+  height = 220,
+  markerType = "destination",
+  coordinateStatus = "exact",
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
-
-  const isValidCoord = (a: number, b: number) =>
-    Number.isFinite(a) && Number.isFinite(b) && !(a === 0 && b === 0) && Math.abs(a) <= 90 && Math.abs(b) <= 180;
-
-  const hasTarget = isValidCoord(lat, lng);
-  const hasFrom = from && isValidCoord(from[0], from[1]);
-
-  // Target location or fallback location (from or Coimbatore default)
-  const targetLat = hasTarget ? lat : hasFrom ? from![0] : 11.0168;
-  const targetLng = hasTarget ? lng : hasFrom ? from![1] : 76.9558;
+  const hasTarget = isValidCoordinate(lat, lng);
+  const hasFrom = !!from && isValidCoordinate(from[0], from[1]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -47,7 +49,11 @@ export function MapPanel({ lat, lng, label, from = null, height = 220, markerTyp
           mapRef.current = null;
         }
 
-        const center: [number, number] = [targetLat, targetLng];
+        const center: [number, number] = hasTarget
+          ? [lat as number, lng as number]
+          : hasFrom
+            ? [from![0], from![1]]
+            : [11.02, 76.99];
         const map = L.map(containerRef.current, {
           center,
           zoom: 15,
@@ -55,6 +61,7 @@ export function MapPanel({ lat, lng, label, from = null, height = 220, markerTyp
           zoomControl: false,
           attributionControl: false,
         });
+        map.setView(center, markerType === "rider" ? 16 : 15);
 
         const tileConfig = getMapTileConfig();
         L.tileLayer(tileConfig.url, {
@@ -77,10 +84,29 @@ export function MapPanel({ lat, lng, label, from = null, height = 220, markerTyp
           iconAnchor: [14, 14],
         });
 
-        L.marker([lat, lng], { icon: destIcon }).addTo(map).bindPopup(label);
+        if (hasTarget && markerType === "rider") {
+          // CircleMarker is rendered by Leaflet's SVG layer and remains visible
+          // even when custom HTML marker icons are blocked by browser styling.
+          L.circleMarker([lat as number, lng as number], {
+            radius: 12,
+            color: "#ffffff",
+            weight: 4,
+            fillColor: "#10b981",
+            fillOpacity: 1,
+          })
+            .addTo(map)
+            .bindPopup(label);
+          L.marker([lat as number, lng as number], { icon: destIcon, zIndexOffset: 1000 }).addTo(
+            map,
+          );
+        } else if (hasTarget) {
+          L.marker([lat as number, lng as number], { icon: destIcon, zIndexOffset: 1000 })
+            .addTo(map)
+            .bindPopup(label);
+        }
 
         // If rider origin is available, plot rider position and polyline
-        if (from && Number.isFinite(from[0]) && Number.isFinite(from[1])) {
+        if (hasTarget && hasFrom) {
           const riderIcon = L.divIcon({
             className: "custom-rider-pin",
             html: `<div style="background-color: #10b981; width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);">
@@ -94,8 +120,8 @@ export function MapPanel({ lat, lng, label, from = null, height = 220, markerTyp
 
           const polyline = L.polyline(
             [
-              [from[0], from[1]],
-              [lat, lng],
+              [from![0], from![1]],
+              [lat as number, lng as number],
             ],
             { color: "#8b5cf6", weight: 4, opacity: 0.8, dashArray: "6, 8" },
           ).addTo(map);
@@ -118,19 +144,20 @@ export function MapPanel({ lat, lng, label, from = null, height = 220, markerTyp
         mapRef.current = null;
       }
     };
-  }, [lat, lng, from?.[0], from?.[1], hasTarget, hasFrom, markerType]);
+  }, [lat, lng, from?.[0], from?.[1], hasTarget, hasFrom, markerType, label]);
 
-  const isValidLocation = hasTarget || hasFrom;
-
-  if (!isValidLocation) {
+  if (!hasTarget) {
     return (
       <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-        Location coordinates are not available yet. Use the address navigation link when available.
+        Destination location unavailable.
       </div>
     );
   }
 
-  const directUrl = osmDirections(hasFrom ? from : null, [targetLat, targetLng]);
+  const directUrl =
+    coordinateStatus === "exact" && hasFrom
+      ? osmDirections(from, [lat as number, lng as number])
+      : null;
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
@@ -140,17 +167,28 @@ export function MapPanel({ lat, lng, label, from = null, height = 220, markerTyp
             <Loader2 className="h-4 w-4 animate-spin" /> Loading OpenStreetMap...
           </div>
         )}
+        {coordinateStatus === "approximate" && (
+          <div className="absolute left-3 top-3 z-10 rounded-full bg-amber-500/90 px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-white">
+            Approximate location
+          </div>
+        )}
       </div>
       <div className="flex items-center justify-between gap-3 border-t border-border bg-card px-3 py-2">
         <span className="truncate text-xs text-muted-foreground flex items-center gap-1.5">
           <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
           {label}
         </span>
-        <Button asChild size="sm" variant="secondary">
-          <a href={directUrl} target="_blank" rel="noreferrer">
-            <Navigation className="mr-1 h-3.5 w-3.5" /> Open Navigation
-          </a>
-        </Button>
+        {directUrl ? (
+          <Button asChild size="sm" variant="secondary">
+            <a href={directUrl} target="_blank" rel="noreferrer">
+              <Navigation className="mr-1 h-3.5 w-3.5" /> Open Navigation
+            </a>
+          </Button>
+        ) : (
+          <span className="text-[11px] font-medium text-muted-foreground">
+            Navigation unavailable
+          </span>
+        )}
       </div>
     </div>
   );
@@ -162,21 +200,24 @@ type AddressNavigationProps = {
   from?: [number, number] | null;
 };
 
-// Default center fallback (Coimbatore, Tamil Nadu center)
-const DEFAULT_CENTER: [number, number] = [11.0168, 76.9558];
-
 export function AddressNavigation({ address, label, from = null }: AddressNavigationProps) {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [searching, setSearching] = useState(true);
+  const [coordinateStatus, setCoordinateStatus] = useState<"exact" | "approximate" | "missing">(
+    "missing",
+  );
 
   useEffect(() => {
     let isCurrent = true;
+    let resolved = false;
     if (!address) {
-      setSearching(false);
+      setCoords(null);
+      setCoordinateStatus("missing");
       return;
     }
 
     const cleanAddress = address.trim();
+    setCoords(null);
+    setCoordinateStatus("missing");
 
     // 1. Try primary address search
     const geocode = async () => {
@@ -190,36 +231,17 @@ export function AddressNavigation({ address, label, from = null }: AddressNaviga
         if (Array.isArray(data) && data.length > 0) {
           const lat = parseFloat(data[0].lat);
           const lng = parseFloat(data[0].lon);
-          if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          if (isValidCoordinate(lat, lng)) {
             setCoords({ lat, lng });
-            setSearching(false);
-            return;
-          }
-        }
-
-        // 2. Fallback: extract postal code or clean location terms (e.g. 641025, Tamil Nadu)
-        const matchPin = cleanAddress.match(/\b\d{6}\b/);
-        const pinQuery = matchPin ? `${matchPin[0]}, Tamil Nadu, India` : "Coimbatore, Tamil Nadu, India";
-        
-        const fallbackRes = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(pinQuery)}&limit=1`,
-        );
-        const fallbackData = await fallbackRes.json();
-        if (!isCurrent) return;
-
-        if (Array.isArray(fallbackData) && fallbackData.length > 0) {
-          const lat = parseFloat(fallbackData[0].lat);
-          const lng = parseFloat(fallbackData[0].lon);
-          if (Number.isFinite(lat) && Number.isFinite(lng)) {
-            setCoords({ lat, lng });
-            setSearching(false);
+            setCoordinateStatus("exact");
+            resolved = true;
             return;
           }
         }
       } catch (err) {
         console.warn("[AddressNavigation] Geocoding error", err);
       } finally {
-        if (isCurrent) setSearching(false);
+        if (isCurrent && !resolved) setCoords(null);
       }
     };
 
@@ -230,17 +252,14 @@ export function AddressNavigation({ address, label, from = null }: AddressNaviga
     };
   }, [address]);
 
-  // Coordinates found (or fallback postal code resolved)
-  const mapLat = coords?.lat ?? (from ? from[0] : DEFAULT_CENTER[0]);
-  const mapLng = coords?.lng ?? (from ? from[1] : DEFAULT_CENTER[1]);
-
   return (
     <MapPanel
-      lat={mapLat}
-      lng={mapLng}
+      lat={coords?.lat ?? null}
+      lng={coords?.lng ?? null}
       label={label ? `${label} (${address})` : address}
       from={from}
       height={220}
+      coordinateStatus={coordinateStatus}
     />
   );
 }

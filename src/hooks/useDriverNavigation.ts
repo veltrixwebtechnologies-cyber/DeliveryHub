@@ -1,20 +1,28 @@
 /**
  * useDriverNavigation – Core navigation hook for delivery partner
- * 
+ *
  * Real GPS tracking, OSRM road routing, off-route rerouting,
  * automatic phase transitions, arrival detection, smooth position updates.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  GPS_STALE_THRESHOLD_MS,
+  GPS_ACCEPTABLE_ACCURACY_M,
+  classifyGpsStatus,
+  gpsStatusLabel,
+  isValidCoordinate,
+  normalizeReading,
+  distanceToPolylineMeters,
+  calculateBearing,
+  haversineDistanceMeters,
+} from "@/lib/geo";
 import { deliveryTracker, type GPSPosition } from "@/services/delivery-location-tracker";
 import {
   fetchDeliveryRoute,
   shouldRecalculateRoute,
-  distanceToPolylineMeters,
-  calculateBearing,
-  haversineDistanceMeters,
+  calculateCumulativeDistances,
   findNextStep,
-  formatDistanceShort,
   type MapLocation,
   type RouteResult,
   type TurnStep,
@@ -24,47 +32,30 @@ export type NavigationPhase = "to_vendor" | "to_customer";
 export type ArrivalZone = "none" | "near_vendor" | "at_vendor" | "near_customer" | "at_customer";
 
 export interface NavigationState {
-  /** Current GPS position */
   driverPos: GPSPosition | null;
-  /** Smoothed position for map rendering */
   displayPos: { lat: number; lng: number; heading: number } | null;
-  /** Current heading (GPS or calculated) */
   heading: number;
-  /** Current speed m/s */
   speed: number;
-  /** Current phase: heading to vendor or customer */
   phase: NavigationPhase;
-  /** Destination coordinates */
   destination: MapLocation | null;
-  /** Destination label */
   destinationLabel: string;
-  /** Active OSRM route */
   route: RouteResult | null;
-  /** Whether the route is being recalculated */
+  routeStatus: RouteResult["status"] | "idle";
+  routeMessage: string | null;
   isRerouting: boolean;
-  /** Off-route status */
   isOffRoute: boolean;
-  /** Distance to destination in meters */
-  distanceToDestM: number;
-  /** ETA to destination in seconds */
-  etaSeconds: number;
-  /** Next navigation instruction */
+  distanceToDestM: number | null;
+  etaSeconds: number | null;
   nextStep: TurnStep | null;
-  /** Distance to next maneuver in meters */
-  distanceToNextStep: number;
-  /** Arrival zone detection */
+  distanceToNextStep: number | null;
   arrivalZone: ArrivalZone;
-  /** GPS accuracy in meters */
   accuracy: number | null;
-  /** Is GPS tracking active */
+  gpsStatus: ReturnType<typeof classifyGpsStatus>;
+  gpsMessage: string | null;
   isTracking: boolean;
-  /** Is GPS signal stale (>30s old) */
   isStale: boolean;
-  /** Last GPS update timestamp */
   lastUpdateAt: number;
-  /** Error state */
   error: string | null;
-  /** Is follow-driver mode enabled */
   followMode: boolean;
 }
 
@@ -81,14 +72,47 @@ interface UseDriverNavigationProps {
 const VENDOR_ARRIVAL_RADIUS_M = 50;
 const CUSTOMER_ARRIVAL_RADIUS_M = 50;
 const NEAR_RADIUS_M = 200;
-const GPS_STALE_THRESHOLD_MS = 30_000;
-const OFF_ROUTE_THRESHOLD_M = 80;
-const MIN_GPS_ACCURACY_M = 100;
+const OFF_ROUTE_THRESHOLD_M = 120;
+const MAX_ROUTE_RETRY_DISTANCE_M = 250;
 
 // Statuses where driver is heading TO vendor
 const TO_VENDOR_STATUSES = ["accepted", "navigating_to_vendor"];
 // Statuses where driver is heading TO customer
 const TO_CUSTOMER_STATUSES = ["picked_up", "out_for_delivery"];
+
+function buildGpsMessage(status: ReturnType<typeof classifyGpsStatus>, detail?: string | null) {
+  if (detail) return detail;
+  return gpsStatusLabel(status);
+}
+
+function calculateArrivalZone(
+  pos: { lat: number; lng: number },
+  phase: NavigationPhase,
+  vendorLocation: MapLocation | null,
+  customerLocation: MapLocation | null,
+): ArrivalZone {
+  if (vendorLocation && phase === "to_vendor") {
+    const dv = haversineDistanceMeters(pos.lat, pos.lng, vendorLocation.lat, vendorLocation.lng);
+    if (dv <= VENDOR_ARRIVAL_RADIUS_M) return "at_vendor";
+    if (dv <= NEAR_RADIUS_M) return "near_vendor";
+  }
+  if (customerLocation && phase === "to_customer") {
+    const dc = haversineDistanceMeters(
+      pos.lat,
+      pos.lng,
+      customerLocation.lat,
+      customerLocation.lng,
+    );
+    if (dc <= CUSTOMER_ARRIVAL_RADIUS_M) return "at_customer";
+    if (dc <= NEAR_RADIUS_M) return "near_customer";
+  }
+  return "none";
+}
+
+function samePoint(a: MapLocation | null, b: MapLocation | null) {
+  if (!a || !b) return false;
+  return a.lat === b.lat && a.lng === b.lng;
+}
 
 export function useDriverNavigation({
   assignmentId,
@@ -99,23 +123,34 @@ export function useDriverNavigation({
   customerLabel,
   enabled,
 }: UseDriverNavigationProps) {
+  const phase: NavigationPhase = TO_CUSTOMER_STATUSES.includes(assignmentStatus)
+    ? "to_customer"
+    : "to_vendor";
+
+  const destination = phase === "to_vendor" ? vendorLocation : customerLocation;
+  const destinationLabel = phase === "to_vendor" ? vendorLabel : customerLabel;
+
   const [state, setState] = useState<NavigationState>({
     driverPos: null,
     displayPos: null,
     heading: 0,
     speed: 0,
-    phase: "to_vendor",
-    destination: null,
-    destinationLabel: "",
+    phase,
+    destination,
+    destinationLabel,
     route: null,
+    routeStatus: "idle",
+    routeMessage: null,
     isRerouting: false,
     isOffRoute: false,
-    distanceToDestM: 0,
-    etaSeconds: 0,
+    distanceToDestM: null,
+    etaSeconds: null,
     nextStep: null,
-    distanceToNextStep: 0,
+    distanceToNextStep: null,
     arrivalZone: "none",
     accuracy: null,
+    gpsStatus: "unavailable",
+    gpsMessage: "Waiting for GPS location...",
     isTracking: false,
     isStale: false,
     lastUpdateAt: 0,
@@ -128,287 +163,454 @@ export function useDriverNavigation({
   const prevPosRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastRouteCalcPosRef = useRef<MapLocation | null>(null);
   const lastRouteCalcTimeRef = useRef<number>(0);
-  const prevPhaseRef = useRef<NavigationPhase>("to_vendor");
-  const routeRequestInFlightRef = useRef(false);
-  const staleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const animFrameRef = useRef<number | null>(null);
+  const prevPhaseRef = useRef<NavigationPhase>(phase);
+  const phaseRef = useRef<NavigationPhase>(phase);
+  const destinationRef = useRef<MapLocation | null>(destination);
+  const vendorLocationRef = useRef<MapLocation | null>(vendorLocation);
+  const customerLocationRef = useRef<MapLocation | null>(customerLocation);
+  const routeRef = useRef<RouteResult | null>(null);
+  const routeAbortRef = useRef<AbortController | null>(null);
+  const routeRequestIdRef = useRef(0);
+  const gpsWatchActiveRef = useRef(false);
+  const consecutiveOffRouteRef = useRef(0);
+  const handleGPSUpdateRef = useRef<(pos: GeolocationPosition) => void>(() => {});
 
-  // ── Determine phase from assignment status ──
-  const phase: NavigationPhase = TO_CUSTOMER_STATUSES.includes(assignmentStatus)
-    ? "to_customer"
-    : "to_vendor";
+  useEffect(() => {
+    phaseRef.current = phase;
+    destinationRef.current = destination;
+    vendorLocationRef.current = vendorLocation;
+    customerLocationRef.current = customerLocation;
+  }, [phase, destination, vendorLocation, customerLocation]);
 
-  // ── Determine destination based on phase ──
-  const destination = phase === "to_vendor" ? vendorLocation : customerLocation;
-  const destinationLabel = phase === "to_vendor" ? vendorLabel : customerLabel;
+  const clearRoute = useCallback((message: string | null = null) => {
+    routeAbortRef.current?.abort();
+    routeAbortRef.current = null;
+    routeRef.current = null;
+    setState((s) => ({
+      ...s,
+      route: null,
+      routeStatus: message ? "error" : "idle",
+      routeMessage: message,
+      isRerouting: false,
+      isOffRoute: false,
+      distanceToDestM: null,
+      etaSeconds: null,
+      nextStep: null,
+      distanceToNextStep: null,
+    }));
+  }, []);
 
-  // ── Calculate arrival zone ──
-  const calcArrivalZone = useCallback(
-    (pos: { lat: number; lng: number }): ArrivalZone => {
-      if (vendorLocation && phase === "to_vendor") {
-        const dv = haversineDistanceMeters(pos.lat, pos.lng, vendorLocation.lat, vendorLocation.lng);
-        if (dv <= VENDOR_ARRIVAL_RADIUS_M) return "at_vendor";
-        if (dv <= NEAR_RADIUS_M) return "near_vendor";
-      }
-      if (customerLocation && phase === "to_customer") {
-        const dc = haversineDistanceMeters(pos.lat, pos.lng, customerLocation.lat, customerLocation.lng);
-        if (dc <= CUSTOMER_ARRIVAL_RADIUS_M) return "at_customer";
-        if (dc <= NEAR_RADIUS_M) return "near_customer";
-      }
-      return "none";
-    },
-    [vendorLocation, customerLocation, phase]
-  );
-
-  // ── Route calculation (debounced) ──
   const calculateRoute = useCallback(
     async (origin: MapLocation, dest: MapLocation, forPhase: NavigationPhase, force = false) => {
-      if (routeRequestInFlightRef.current && !force) return;
+      if (!isValidCoordinate(origin.lat, origin.lng) || !isValidCoordinate(dest.lat, dest.lng)) {
+        clearRoute("Destination location unavailable.");
+        return;
+      }
 
+      const currentRoute = routeRef.current;
       const phaseChanged = prevPhaseRef.current !== forPhase;
-      const shouldCalc = force || shouldRecalculateRoute(
-        origin,
-        lastRouteCalcPosRef.current,
-        state.route?.geometry || null,
-        lastRouteCalcTimeRef.current,
-        phaseChanged
-      );
+      const shouldCalc =
+        force ||
+        shouldRecalculateRoute(
+          origin,
+          lastRouteCalcPosRef.current,
+          currentRoute?.geometry || null,
+          lastRouteCalcTimeRef.current,
+          phaseChanged,
+        );
 
       if (!shouldCalc) return;
 
-      routeRequestInFlightRef.current = true;
+      routeAbortRef.current?.abort();
+      const controller = new AbortController();
+      routeAbortRef.current = controller;
+      const requestId = ++routeRequestIdRef.current;
       setState((s) => ({ ...s, isRerouting: true }));
 
-      try {
-        const result = await fetchDeliveryRoute(origin, dest, forPhase);
-        lastRouteCalcPosRef.current = origin;
-        lastRouteCalcTimeRef.current = Date.now();
-        prevPhaseRef.current = forPhase;
-
-        setState((s) => ({
-          ...s,
-          route: result,
-          isRerouting: false,
-          isOffRoute: false,
-          distanceToDestM: result.distanceMeters,
-          etaSeconds: result.durationSeconds,
-          error: null,
-        }));
-      } catch (err) {
-        console.error("[Navigation] Route calculation failed", err);
-        setState((s) => ({ ...s, isRerouting: false, error: "Unable to calculate route" }));
-      } finally {
-        routeRequestInFlightRef.current = false;
-      }
-    },
-    [state.route?.geometry]
-  );
-
-  // ── GPS position handler ──
-  const handleGPSUpdate = useCallback(
-    (position: GeolocationPosition) => {
-      const { latitude, longitude, heading, speed, accuracy } = position.coords;
-      const now = Date.now();
-
-      // Validate GPS reading
+      const result = await fetchDeliveryRoute(origin, dest, forPhase, {
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || requestId !== routeRequestIdRef.current) return;
       if (
-        !Number.isFinite(latitude) || !Number.isFinite(longitude) ||
-        Math.abs(latitude) > 90 || Math.abs(longitude) > 180
+        !samePoint(
+          origin,
+          lastGpsRef.current
+            ? { lat: lastGpsRef.current.latitude, lng: lastGpsRef.current.longitude }
+            : null,
+        )
       ) {
         return;
       }
-
-      // Reject readings with very poor accuracy
-      if (accuracy !== null && accuracy > MIN_GPS_ACCURACY_M) {
+      if (phaseRef.current !== forPhase || !samePoint(dest, destinationRef.current)) {
         return;
       }
 
-      // Reject impossible jumps (> 500m in < 2 seconds)
+      lastRouteCalcPosRef.current = origin;
+      lastRouteCalcTimeRef.current = Date.now();
+      prevPhaseRef.current = forPhase;
+      routeRef.current = result;
+
+      if (result.status !== "success") {
+        setState((s) => ({
+          ...s,
+          route: result,
+          routeStatus: result.status,
+          routeMessage:
+            result.status === "fallback"
+              ? "Road route unavailable."
+              : "Route could not be calculated.",
+          isRerouting: false,
+          isOffRoute: false,
+          distanceToDestM: null,
+          etaSeconds: null,
+          nextStep: null,
+          distanceToNextStep: null,
+        }));
+        return;
+      }
+
+      const found = findNextStep(origin, result.steps, result.geometry);
+      setState((s) => ({
+        ...s,
+        route: result,
+        routeStatus: result.status,
+        routeMessage: null,
+        isRerouting: false,
+        isOffRoute: false,
+        distanceToDestM: result.distanceMeters,
+        etaSeconds: result.durationSeconds,
+        nextStep: found?.step ?? null,
+        distanceToNextStep: found?.distanceToStep ?? null,
+      }));
+    },
+    [clearRoute],
+  );
+
+  const handleGPSUpdate = useCallback(
+    (position: GeolocationPosition) => {
+      const reading = normalizeReading(position);
+      if (!reading) {
+        setState((s) => ({
+          ...s,
+          gpsStatus: "error",
+          gpsMessage: "GPS returned an invalid coordinate.",
+          error: "GPS returned an invalid coordinate.",
+          isTracking: gpsWatchActiveRef.current,
+        }));
+        return;
+      }
+
+      const now = Date.now();
+      const ageMs = now - reading.timestamp;
+      const isAcceptableAccuracy =
+        reading.accuracy === null || reading.accuracy <= GPS_ACCEPTABLE_ACCURACY_M;
+      const gpsStatus = classifyGpsStatus({
+        hasFix: true,
+        hasError: false,
+        isStale: ageMs > GPS_STALE_THRESHOLD_MS,
+        isWatching: gpsWatchActiveRef.current,
+        accuracy: reading.accuracy,
+      });
+
+      if (!isAcceptableAccuracy) {
+        setState((s) => ({
+          ...s,
+          gpsStatus: "inaccurate",
+          gpsMessage: `GPS inaccurate${reading.accuracy ? ` (±${Math.round(reading.accuracy)}m)` : ""}`,
+          error: `GPS accuracy too low${reading.accuracy ? ` (±${Math.round(reading.accuracy)}m)` : ""}`,
+          isTracking: true,
+          lastUpdateAt: now,
+        }));
+        return;
+      }
+
       if (lastGpsRef.current) {
         const timeDelta = (now - lastGpsRef.current.timestamp) / 1000;
         if (timeDelta > 0 && timeDelta < 2) {
           const jumped = haversineDistanceMeters(
-            lastGpsRef.current.latitude, lastGpsRef.current.longitude,
-            latitude, longitude
+            lastGpsRef.current.latitude,
+            lastGpsRef.current.longitude,
+            reading.latitude,
+            reading.longitude,
           );
-          if (jumped > 500) return; // Impossible jump
+          if (jumped > 500) {
+            return;
+          }
         }
       }
 
       const gps: GPSPosition = {
-        latitude, longitude,
-        heading: heading ?? null,
-        speed: speed ?? null,
-        accuracy: accuracy ?? null,
-        timestamp: now,
+        latitude: reading.latitude,
+        longitude: reading.longitude,
+        heading: reading.heading,
+        speed: reading.speed,
+        accuracy: reading.accuracy,
+        timestamp: reading.timestamp,
       };
 
-      // Calculate heading from movement if GPS heading unavailable
-      let effectiveHeading = heading ?? 0;
-      if ((heading === null || heading === 0) && prevPosRef.current) {
-        const moved = haversineDistanceMeters(prevPosRef.current.lat, prevPosRef.current.lng, latitude, longitude);
+      let effectiveHeading = reading.heading ?? 0;
+      if ((reading.heading === null || reading.heading === 0) && prevPosRef.current) {
+        const moved = haversineDistanceMeters(
+          prevPosRef.current.lat,
+          prevPosRef.current.lng,
+          reading.latitude,
+          reading.longitude,
+        );
         if (moved > 3) {
-          effectiveHeading = calculateBearing(prevPosRef.current.lat, prevPosRef.current.lng, latitude, longitude);
-        } else {
-          effectiveHeading = lastGpsRef.current?.heading ?? 0;
+          effectiveHeading = calculateBearing(
+            prevPosRef.current.lat,
+            prevPosRef.current.lng,
+            reading.latitude,
+            reading.longitude,
+          );
         }
       }
 
       lastGpsRef.current = gps;
-      prevPosRef.current = { lat: latitude, lng: longitude };
+      prevPosRef.current = { lat: reading.latitude, lng: reading.longitude };
 
-      const currentLoc: MapLocation = { lat: latitude, lng: longitude };
-      const arrivalZone = calcArrivalZone(currentLoc);
+      const currentLoc: MapLocation = { lat: reading.latitude, lng: reading.longitude };
+      const arrivalZone = calculateArrivalZone(currentLoc, phase, vendorLocation, customerLocation);
+      const route = routeRef.current;
 
-      // Off-route detection
       let isOffRoute = false;
-      if (state.route?.geometry && state.route.geometry.length > 0) {
-        const distFromRoute = distanceToPolylineMeters(currentLoc, state.route.geometry);
-        isOffRoute = distFromRoute > OFF_ROUTE_THRESHOLD_M;
-      }
-
-      // Find next navigation step
       let nextStep: TurnStep | null = null;
-      let distToStep = 0;
-      if (state.route?.steps && state.route.geometry) {
-        const found = findNextStep(currentLoc, state.route.steps, state.route.geometry);
-        if (found) {
-          nextStep = found.step;
-          distToStep = found.distanceToStep;
-        }
-      }
+      let distanceToNextStep: number | null = null;
+      let distanceToDestM: number | null = null;
+      let etaSeconds: number | null = null;
 
-      // Calculate distance to destination
-      let distToDest = state.distanceToDestM;
-      if (destination) {
-        distToDest = haversineDistanceMeters(latitude, longitude, destination.lat, destination.lng);
+      if (route?.status === "success" && route.geometry.length > 0) {
+        const distFromRoute = distanceToPolylineMeters(currentLoc, route.geometry);
+        const rawOffRoute = distFromRoute > OFF_ROUTE_THRESHOLD_M;
+        if (rawOffRoute) {
+          consecutiveOffRouteRef.current += 1;
+        } else {
+          consecutiveOffRouteRef.current = 0;
+        }
+        // Require 2 consecutive off-route readings to trigger off-route state & reroute
+        isOffRoute = consecutiveOffRouteRef.current >= 2;
+
+        const found = findNextStep(currentLoc, route.steps, route.geometry);
+        nextStep = found?.step ?? null;
+        distanceToNextStep = found?.distanceToStep ?? null;
+
+        if (route.distanceMeters !== null) {
+          const cumDistances = calculateCumulativeDistances(route.geometry);
+          const closestIdx = found?.closestIndex ?? 0;
+          const distTraveledM = cumDistances[closestIdx] ?? 0;
+          distanceToDestM = Math.max(0, route.distanceMeters - Math.round(distTraveledM));
+          if (route.durationSeconds !== null && route.distanceMeters > 0) {
+            etaSeconds = Math.max(
+              0,
+              Math.round((distanceToDestM / route.distanceMeters) * route.durationSeconds),
+            );
+          } else {
+            etaSeconds = route.durationSeconds;
+          }
+        } else {
+          distanceToDestM = null;
+          etaSeconds = null;
+        }
       }
 
       setState((s) => ({
         ...s,
         driverPos: gps,
-        displayPos: { lat: latitude, lng: longitude, heading: effectiveHeading },
+        displayPos: { lat: reading.latitude, lng: reading.longitude, heading: effectiveHeading },
         heading: effectiveHeading,
-        speed: speed ?? 0,
+        speed: reading.speed ?? 0,
         phase,
         destination,
         destinationLabel,
-        accuracy: accuracy ?? null,
+        accuracy: reading.accuracy,
+        gpsStatus,
+        gpsMessage: buildGpsMessage(
+          gpsStatus,
+          reading.accuracy && reading.accuracy > GPS_ACCEPTABLE_ACCURACY_M
+            ? "GPS inaccurate"
+            : null,
+        ),
         isTracking: true,
         isStale: false,
         lastUpdateAt: now,
         arrivalZone,
         isOffRoute,
         nextStep,
-        distanceToNextStep: distToStep,
-        distanceToDestM: distToDest,
+        distanceToNextStep,
+        distanceToDestM,
+        etaSeconds,
+        error: null,
       }));
 
-      // Trigger route recalculation if off-route or conditions met
-      if (destination && (isOffRoute || !state.route)) {
-        void calculateRoute(currentLoc, destination, phase, isOffRoute);
-      } else if (destination) {
-        void calculateRoute(currentLoc, destination, phase, false);
+      if (destinationRef.current && route?.status === "success") {
+        if (isOffRoute || !routeRef.current) {
+          void calculateRoute(currentLoc, destinationRef.current, phaseRef.current, isOffRoute);
+        } else if (
+          shouldRecalculateRoute(
+            currentLoc,
+            lastRouteCalcPosRef.current,
+            route.geometry || null,
+            lastRouteCalcTimeRef.current,
+            prevPhaseRef.current !== phaseRef.current,
+          )
+        ) {
+          void calculateRoute(currentLoc, destinationRef.current, phaseRef.current, false);
+        }
+        return;
+      }
+
+      if (destinationRef.current && !routeRef.current) {
+        void calculateRoute(currentLoc, destinationRef.current, phaseRef.current, false);
       }
     },
-    [destination, destinationLabel, phase, calcArrivalZone, calculateRoute, state.route, state.distanceToDestM]
+    [calculateRoute, destinationLabel, customerLocation, destination, phase, vendorLocation],
   );
+
+  useEffect(() => {
+    handleGPSUpdateRef.current = handleGPSUpdate;
+  }, [handleGPSUpdate]);
+
+  // Sync the latest derived values into state when the assignment changes.
+  useEffect(() => {
+    setState((s) => ({
+      ...s,
+      phase,
+      destination,
+      destinationLabel,
+    }));
+  }, [phase, destination, destinationLabel]);
 
   // ── Start/stop GPS tracking ──
   useEffect(() => {
     if (!enabled || !assignmentId) {
+      gpsWatchActiveRef.current = false;
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
-      setState((s) => ({ ...s, isTracking: false }));
+      routeAbortRef.current?.abort();
+      setState((s) => ({
+        ...s,
+        isTracking: false,
+        gpsStatus: "unavailable",
+        gpsMessage: "Waiting for GPS location...",
+        error: null,
+        isStale: false,
+      }));
       return;
     }
 
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
-      setState((s) => ({ ...s, error: "Geolocation not available" }));
+      setState((s) => ({
+        ...s,
+        gpsStatus: "error",
+        gpsMessage: "Geolocation not available",
+        error: "Geolocation not available",
+      }));
       return;
     }
 
-    // Start the GPS watch with fallback for desktop browsers
-    const startWatch = (highAccuracy: boolean) => {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      }
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        handleGPSUpdate,
-        (err) => {
-          console.warn("[Navigation] GPS error (highAccuracy=" + highAccuracy + "):", err.message);
-          if (highAccuracy && err.code === 3) {
-            // Timeout on high accuracy (common on desktops); retry with standard accuracy
-            startWatch(false);
-            return;
-          }
-          setState((s) => ({
-            ...s,
-            error: err.code === 1 ? "Location permission denied" : `GPS: ${err.message}`,
-          }));
-        },
-        {
-          enableHighAccuracy: highAccuracy,
-          timeout: highAccuracy ? 10000 : 20000,
-          maximumAge: 5000,
-        }
-      );
-    };
+    gpsWatchActiveRef.current = true;
+    setState((s) => ({
+      ...s,
+      isTracking: true,
+      gpsStatus: "acquiring",
+      gpsMessage: gpsStatusLabel("acquiring"),
+      error: null,
+    }));
 
-    startWatch(true);
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => handleGPSUpdateRef.current(pos),
+      (err) => {
+        const message =
+          err.code === 1
+            ? "Location permission denied."
+            : err.code === 2
+              ? "GPS position unavailable."
+              : err.code === 3
+                ? "GPS request timed out."
+                : err.message || "GPS error.";
+        setState((s) => ({
+          ...s,
+          gpsStatus: "error",
+          gpsMessage: message,
+          error: message,
+          isTracking: true,
+        }));
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15_000,
+        maximumAge: 5_000,
+      },
+    );
 
-    // Also ensure the delivery tracker is running for server sync
     deliveryTracker.startTracking(assignmentId);
 
     return () => {
+      gpsWatchActiveRef.current = false;
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
+      routeAbortRef.current?.abort();
     };
-  }, [enabled, assignmentId, handleGPSUpdate]);
+  }, [enabled, assignmentId]);
 
-  // ── Phase change: force route recalculation ──
+  // ── Phase change: force route recalculation once GPS is available ──
   useEffect(() => {
-    if (prevPhaseRef.current !== phase && destination) {
-      const origin: MapLocation = lastGpsRef.current
-        ? { lat: lastGpsRef.current.latitude, lng: lastGpsRef.current.longitude }
-        : phase === "to_customer" && vendorLocation
-        ? vendorLocation
-        : { lat: 11.0168, lng: 76.9558 };
+    if (!destination || !lastGpsRef.current) {
+      if (destination && !lastGpsRef.current) {
+        setState((s) => ({
+          ...s,
+          routeMessage: "Waiting for GPS location...",
+          routeStatus: "idle",
+        }));
+      }
+      return;
+    }
+
+    const origin = {
+      lat: lastGpsRef.current.latitude,
+      lng: lastGpsRef.current.longitude,
+    };
+    if (prevPhaseRef.current !== phase) {
       void calculateRoute(origin, destination, phase, true);
     }
-  }, [phase, destination, vendorLocation, calculateRoute]);
+  }, [calculateRoute, destination, phase]);
 
   // ── Initial route calculation when destination becomes available ──
   useEffect(() => {
-    if (destination && !state.route) {
-      const origin: MapLocation = lastGpsRef.current
-        ? { lat: lastGpsRef.current.latitude, lng: lastGpsRef.current.longitude }
-        : phase === "to_customer" && vendorLocation
-        ? vendorLocation
-        : { lat: 11.0168, lng: 76.9558 };
-      void calculateRoute(origin, destination, phase, true);
-    }
-  }, [destination, state.route, phase, vendorLocation, calculateRoute]);
+    if (!destination || !lastGpsRef.current) return;
+    if (routeRef.current) return;
+    void calculateRoute(
+      { lat: lastGpsRef.current.latitude, lng: lastGpsRef.current.longitude },
+      destination,
+      phase,
+      true,
+    );
+  }, [calculateRoute, destination, phase]);
 
   // ── Stale GPS detection timer ──
   useEffect(() => {
-    if (staleTimerRef.current) clearInterval(staleTimerRef.current);
-    staleTimerRef.current = setInterval(() => {
-      if (state.lastUpdateAt > 0) {
-        const elapsed = Date.now() - state.lastUpdateAt;
-        setState((s) => ({ ...s, isStale: elapsed > GPS_STALE_THRESHOLD_MS }));
-      }
-    }, 5000);
-    return () => {
-      if (staleTimerRef.current) clearInterval(staleTimerRef.current);
-    };
-  }, [state.lastUpdateAt]);
+    const timer = window.setInterval(() => {
+      setState((s) => {
+        if (!s.lastUpdateAt) return s;
+        const elapsed = Date.now() - s.lastUpdateAt;
+        const isStale = elapsed > GPS_STALE_THRESHOLD_MS;
+        const gpsStatus =
+          s.gpsStatus === "error" || s.gpsStatus === "unavailable"
+            ? s.gpsStatus
+            : isStale
+              ? "stale"
+              : s.gpsStatus;
+        const gpsMessage = gpsStatus === "stale" ? "GPS stale" : s.gpsMessage;
+        return { ...s, isStale, gpsStatus, gpsMessage };
+      });
+    }, 5_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
-  // ── Follow mode toggle ──
   const toggleFollowMode = useCallback(() => {
     setState((s) => ({ ...s, followMode: !s.followMode }));
   }, []);
@@ -421,16 +623,16 @@ export function useDriverNavigation({
     setState((s) => ({ ...s, followMode: false }));
   }, []);
 
-  // ── Force route refresh ──
   const forceRefreshRoute = useCallback(() => {
     if (destination && lastGpsRef.current) {
-      const origin: MapLocation = {
-        lat: lastGpsRef.current.latitude,
-        lng: lastGpsRef.current.longitude,
-      };
-      void calculateRoute(origin, destination, phase, true);
+      void calculateRoute(
+        { lat: lastGpsRef.current.latitude, lng: lastGpsRef.current.longitude },
+        destination,
+        phase,
+        true,
+      );
     }
-  }, [destination, phase, calculateRoute]);
+  }, [calculateRoute, destination, phase]);
 
   return {
     ...state,

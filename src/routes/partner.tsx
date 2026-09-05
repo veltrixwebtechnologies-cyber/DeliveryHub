@@ -37,6 +37,16 @@ import {
 import { locationService } from "@/services/locationService";
 import { setPartnerAvailability } from "@/repositories/partnerRepository";
 
+function isValidLocation(lat: number, lng: number) {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lng) <= 180 &&
+    !(lat === 0 && lng === 0)
+  );
+}
+
 export function haversineDistanceKm(
   lat1: number,
   lon1: number,
@@ -82,8 +92,16 @@ const NAV = [
   { to: "/partner", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
   { to: "/partner/deliveries", label: "Deliveries", icon: <Package className="h-4 w-4" /> },
   { to: "/partner/earnings", label: "Earnings", icon: <Wallet className="h-4 w-4" /> },
-  { to: "/partner/referral", label: "Refer & Earn", icon: <Gift className="h-4 w-4 text-emerald-500" /> },
-  { to: "/partner/rentals", label: "Rent Vehicle", icon: <Bike className="h-4 w-4 text-blue-500" /> },
+  {
+    to: "/partner/referral",
+    label: "Refer & Earn",
+    icon: <Gift className="h-4 w-4 text-emerald-500" />,
+  },
+  {
+    to: "/partner/rentals",
+    label: "Rent Vehicle",
+    icon: <Bike className="h-4 w-4 text-blue-500" />,
+  },
   { to: "/partner/documents", label: "Documents", icon: <FileText className="h-4 w-4" /> },
 ];
 
@@ -126,9 +144,9 @@ function PartnerLayout() {
     }
 
     const checkZone = async () => {
-      let zoneLat = 13.0827; // Default Shoreline hub center
-      let zoneLng = 80.2707;
-      let zoneName = "Shoreline Central Zone";
+      let zoneLat: number | null = null;
+      let zoneLng: number | null = null;
+      let zoneName = "Assigned Zone";
       let radiusKm = 30.0;
 
       try {
@@ -140,7 +158,7 @@ function PartnerLayout() {
 
         if (partnerZones && partnerZones.length > 0 && partnerZones[0].delivery_zones) {
           const z = partnerZones[0].delivery_zones as any;
-          if (z.latitude && z.longitude) {
+          if (isValidLocation(Number(z.latitude), Number(z.longitude))) {
             zoneLat = Number(z.latitude);
             zoneLng = Number(z.longitude);
             zoneName = z.name || "Assigned Zone";
@@ -151,7 +169,11 @@ function PartnerLayout() {
         console.error("[zone-check] failed reading zone info", zErr);
       }
 
-      if (Number.isFinite(partner.current_latitude) && Number.isFinite(partner.current_longitude)) {
+      if (
+        zoneLat !== null &&
+        zoneLng !== null &&
+        isValidLocation(Number(partner.current_latitude), Number(partner.current_longitude))
+      ) {
         const dist = haversineDistanceKm(
           Number(partner.current_latitude),
           Number(partner.current_longitude),
@@ -173,6 +195,8 @@ function PartnerLayout() {
             { id: "out-of-zone-toast", duration: 8000 },
           );
         }
+      } else {
+        setZoneInfo(null);
       }
     };
 
@@ -192,11 +216,14 @@ function PartnerLayout() {
       });
       if (error) {
         // Fallback: direct table updates if RPC is pending migration execution
-        await db.from("delivery_partners").update({
-          current_latitude: partner.current_latitude,
-          current_longitude: partner.current_longitude,
-          location_updated_at: new Date().toISOString(),
-        }).eq("id", partner.id);
+        await db
+          .from("delivery_partners")
+          .update({
+            current_latitude: partner.current_latitude,
+            current_longitude: partner.current_longitude,
+            location_updated_at: new Date().toISOString(),
+          })
+          .eq("id", partner.id);
       }
       toast.success("🎯 Zone synced to your current location!");
       setZoneInfo(null);
@@ -705,12 +732,16 @@ function PartnerLayout() {
 
   const order = request?.orders;
   const vendor = order?.vendors;
-  const requestHasVendorCoordinates =
-    Number.isFinite(vendor?.latitude) && Number.isFinite(vendor?.longitude);
-  const requestFrom: [number, number] | null =
-    Number.isFinite(partner.current_latitude) && Number.isFinite(partner.current_longitude)
-      ? [partner.current_latitude!, partner.current_longitude!]
-      : null;
+  const requestHasVendorCoordinates = isValidLocation(
+    Number(vendor?.latitude),
+    Number(vendor?.longitude),
+  );
+  const requestFrom: [number, number] | null = isValidLocation(
+    Number(partner.current_latitude),
+    Number(partner.current_longitude),
+  )
+    ? [Number(partner.current_latitude), Number(partner.current_longitude)]
+    : null;
 
   return (
     <AppShell
@@ -719,7 +750,10 @@ function PartnerLayout() {
       right={
         <div className="flex items-center gap-2">
           {zoneInfo?.isOutOfZone && partner.availability === "online" ? (
-            <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-500/10 text-xs hidden sm:inline-flex">
+            <Badge
+              variant="outline"
+              className="border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-500/10 text-xs hidden sm:inline-flex"
+            >
               ⚠️ Out of Zone
             </Badge>
           ) : null}
@@ -753,7 +787,8 @@ function PartnerLayout() {
             <div>
               <p className="font-bold text-sm">🚨 Out of Operating Zone ({zoneInfo.zoneName})</p>
               <p className="text-xs opacity-90 mt-0.5">
-                You are currently {zoneInfo.distanceKm.toFixed(1)} km outside your assigned delivery zone. Head back to your zone or sync to receive orders.
+                You are currently {zoneInfo.distanceKm.toFixed(1)} km outside your assigned delivery
+                zone. Head back to your zone or sync to receive orders.
               </p>
             </div>
           </div>
@@ -797,10 +832,13 @@ function PartnerLayout() {
                   ⏳ Application Under Review
                 </h2>
                 <p className="mt-3 text-base text-muted-foreground leading-relaxed max-w-lg">
-                  Your delivery partner profile and verification documents have been submitted to the LocalShore Admin team.
+                  Your delivery partner profile and verification documents have been submitted to
+                  the LocalShore Admin team.
                 </p>
                 <div className="mt-5 p-4 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-950 dark:text-amber-200 text-sm font-medium leading-relaxed">
-                  ⌛ <strong>24-Hour Review Window:</strong> It will take up to 24 hours to review and wait for admin approval. Once approved by the admin, all features (Deliveries, Earnings, Refer & Earn, Vehicle Rentals) will be unlocked automatically.
+                  ⌛ <strong>24-Hour Review Window:</strong> It will take up to 24 hours to review
+                  and wait for admin approval. Once approved by the admin, all features (Deliveries,
+                  Earnings, Refer & Earn, Vehicle Rentals) will be unlocked automatically.
                 </div>
               </div>
 

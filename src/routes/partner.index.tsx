@@ -38,10 +38,20 @@ function todayStart() {
 }
 
 function isValidCoordinate(lat: number, lng: number) {
-  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0);
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lng) <= 180 &&
+    !(lat === 0 && lng === 0)
+  );
 }
 
-function LiveLocationCard({ partner }: { partner: NonNullable<ReturnType<typeof usePartner>["partner"]> }) {
+function LiveLocationCard({
+  partner,
+}: {
+  partner: NonNullable<ReturnType<typeof usePartner>["partner"]>;
+}) {
   const savedLocation = {
     lat: Number(partner.current_latitude),
     lng: Number(partner.current_longitude),
@@ -50,11 +60,95 @@ function LiveLocationCard({ partner }: { partner: NonNullable<ReturnType<typeof 
     isValidCoordinate(savedLocation.lat, savedLocation.lng) ? savedLocation : null,
   );
   const [status, setStatus] = useState("Waiting for GPS location…");
+  const [requesting, setRequesting] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [addressName, setAddressName] = useState<string | null>(null);
+
+  const applyLiveLocation = (next: { lat: number; lng: number }) => {
+    if (!isValidCoordinate(next.lat, next.lng)) return;
+    setLocation(next);
+    setUpdatedAt(Date.now());
+    setStatus("Live location updating");
+
+    void supabase
+      .from("delivery_partners")
+      .update({
+        current_latitude: next.lat,
+        current_longitude: next.lng,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", partner.id);
+  };
+
+  useEffect(() => {
+    if (!location) return;
+    let active = true;
+    const fetchAddress = async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.lat}&lon=${location.lng}&zoom=16`,
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (active && data?.display_name) {
+          const parts = data.display_name.split(",");
+          const shortName = parts.slice(0, 3).join(", ");
+          setAddressName(shortName);
+        }
+      } catch {
+        // ignore geocoding failures
+      }
+    };
+    void fetchAddress();
+    return () => {
+      active = false;
+    };
+  }, [location?.lat, location?.lng]);
+
+  const requestFreshLocation = () => {
+    const isLocalhost =
+      window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+    if (!window.isSecureContext && !isLocalhost) {
+      setStatus("Location requires HTTPS or localhost");
+      return;
+    }
+    if (!navigator.geolocation) {
+      setStatus("This browser does not provide GPS location");
+      return;
+    }
+    setRequesting(true);
+    setStatus("Requesting your current location…");
+    const onPosition = (position: GeolocationPosition) => {
+      applyLiveLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+      setRequesting(false);
+    };
+    const onError = (error: GeolocationPositionError) => {
+      setRequesting(false);
+      setStatus(
+        error.code === error.PERMISSION_DENIED
+          ? "Permission denied — allow Location for 127.0.0.1 in the address bar"
+          : error.code === error.POSITION_UNAVAILABLE
+            ? "Position unavailable — enable device Location/GPS and Wi‑Fi"
+            : error.code === error.TIMEOUT
+              ? "Location timed out — try again near a window"
+              : `Location failed (error ${error.code})`,
+      );
+    };
+    navigator.geolocation.getCurrentPosition(onPosition, onError, {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 10_000,
+    });
+  };
 
   useEffect(() => {
     if (isValidCoordinate(savedLocation.lat, savedLocation.lng)) {
       setLocation(savedLocation);
-      setStatus(partner.availability === "online" ? "Live tracking active" : "Showing your last known location");
+      setStatus(
+        partner.availability === "online"
+          ? "Live tracking active"
+          : "Showing your last known location",
+      );
     }
 
     if (partner.availability === "offline" || !("geolocation" in navigator)) return;
@@ -62,11 +156,18 @@ function LiveLocationCard({ partner }: { partner: NonNullable<ReturnType<typeof 
     const onPosition = (position: GeolocationPosition) => {
       const next = { lat: position.coords.latitude, lng: position.coords.longitude };
       if (isValidCoordinate(next.lat, next.lng)) {
-        setLocation(next);
-        setStatus("Live location updating");
+        applyLiveLocation(next);
       }
     };
-    const onError = () => setStatus("GPS unavailable — showing your last known location");
+    const onError = (error: GeolocationPositionError) => {
+      setStatus(
+        error.code === error.PERMISSION_DENIED
+          ? "Permission denied — allow Location in the address bar"
+          : error.code === error.POSITION_UNAVAILABLE
+            ? "Position unavailable — showing your last known location"
+            : "GPS timed out — showing your last known location",
+      );
+    };
 
     navigator.geolocation.getCurrentPosition(onPosition, onError, {
       enableHighAccuracy: false,
@@ -80,7 +181,7 @@ function LiveLocationCard({ partner }: { partner: NonNullable<ReturnType<typeof 
     });
 
     return () => navigator.geolocation.clearWatch(watchId);
-  }, [partner.id, partner.availability, partner.current_latitude, partner.current_longitude]);
+  }, [partner.id, partner.availability]);
 
   useEffect(() => {
     const onParentLocation = (event: Event) => {
@@ -88,8 +189,7 @@ function LiveLocationCard({ partner }: { partner: NonNullable<ReturnType<typeof 
       const nextLat = Number(detail?.lat);
       const nextLng = Number(detail?.lng);
       if (isValidCoordinate(nextLat, nextLng)) {
-        setLocation({ lat: nextLat, lng: nextLng });
-        setStatus("Live location updating");
+        applyLiveLocation({ lat: nextLat, lng: nextLng });
       }
     };
     window.addEventListener("partner-location-update", onParentLocation);
@@ -101,7 +201,12 @@ function LiveLocationCard({ partner }: { partner: NonNullable<ReturnType<typeof 
       .channel(`partner-live-location-${partner.id}`)
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "delivery_partners", filter: `id=eq.${partner.id}` },
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "delivery_partners",
+          filter: `id=eq.${partner.id}`,
+        },
         (payload) => {
           const nextLat = Number((payload.new as { current_latitude?: number }).current_latitude);
           const nextLng = Number((payload.new as { current_longitude?: number }).current_longitude);
@@ -126,22 +231,73 @@ function LiveLocationCard({ partner }: { partner: NonNullable<ReturnType<typeof 
             <LocateFixed className="h-4 w-4 text-primary" />
             Your live location
           </CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">{status}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <p className="text-sm text-muted-foreground">{status}</p>
+            {location && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                <MapPin className="h-3 w-3" />
+                {location.lat.toFixed(4)}°, {location.lng.toFixed(4)}°
+              </span>
+            )}
+          </div>
         </div>
-        <span className="flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-          {partner.availability === "online" ? "Live" : "Offline"}
-        </span>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={requestFreshLocation}
+            disabled={requesting}
+          >
+            <LocateFixed className={`mr-1 h-3.5 w-3.5 ${requesting ? "animate-spin" : ""}`} />
+            {requesting ? "Locating…" : "Use my location"}
+          </Button>
+          <span className="flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+            {partner.availability === "online" ? "Live" : "Offline"}
+          </span>
+        </div>
       </CardHeader>
       <CardContent className="p-5">
         {location ? (
-          <MapPanel
-            lat={location.lat}
-            lng={location.lng}
-            label="Your current location"
-            height={280}
-            markerType="rider"
-          />
+          <>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground font-bold">
+                  <MapPin className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="font-semibold text-foreground truncate">
+                    {addressName || "Acquired Location"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground font-mono">
+                    Lat: {location.lat.toFixed(6)}, Lng: {location.lng.toFixed(6)}
+                  </p>
+                </div>
+              </div>
+              <span className="shrink-0 rounded-full bg-emerald-100 dark:bg-emerald-950 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                ● Live Position
+              </span>
+            </div>
+
+            <MapPanel
+              lat={location.lat}
+              lng={location.lng}
+              label={addressName || "Your current location"}
+              height={280}
+              markerType="rider"
+            />
+            <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+              <span className="font-mono text-foreground/80">
+                Coordinates: {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
+              </span>
+              <span>
+                {updatedAt
+                  ? `Device location received at ${new Date(updatedAt).toLocaleTimeString()}`
+                  : "Last saved location — click Use my location for a fresh GPS fix"}
+              </span>
+            </div>
+          </>
         ) : (
           <div className="flex min-h-[280px] items-center justify-center rounded-xl border border-dashed border-border bg-secondary/20 p-6 text-center text-sm text-muted-foreground">
             Allow location access while online to see your live position here.

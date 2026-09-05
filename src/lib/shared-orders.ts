@@ -3,6 +3,8 @@
  * orders.seller_id, order_number, buyer_* and order_items. The delivery UI
  * keeps its existing display model, so all schema translation lives here.
  */
+import { isValidCoordinate } from "@/lib/geo";
+
 export function normalizeOrder(row: any) {
   const seller = row?.seller ?? row?.vendors ?? null;
   const address = [
@@ -16,8 +18,10 @@ export function normalizeOrder(row: any) {
     .join(", ");
 
   const activeAssignment = Array.isArray(row?.delivery_assignments)
-    ? (row?.delivery_assignments.find((a: any) => a.status !== "expired" && a.status !== "rejected") ?? row?.delivery_assignments[0])
-    : row?.delivery_assignments ?? null;
+    ? (row?.delivery_assignments.find(
+        (a: any) => a.status !== "expired" && a.status !== "rejected",
+      ) ?? row?.delivery_assignments[0])
+    : (row?.delivery_assignments ?? null);
 
   const partnerRow = row?.assigned_partner ?? activeAssignment?.delivery_partners ?? null;
   const assigned_partner = partnerRow
@@ -32,12 +36,24 @@ export function normalizeOrder(row: any) {
       }
     : null;
 
+  const rawLat = seller?.lat ?? seller?.latitude;
+  const rawLng = seller?.lng ?? seller?.longitude;
+  const validLat = isValidCoordinate(rawLat, rawLng) ? Number(rawLat) : null;
+  const validLng = isValidCoordinate(rawLat, rawLng) ? Number(rawLng) : null;
+
+  const rawCustLat = row?.customer_latitude ?? row?.destination_lat;
+  const rawCustLng = row?.customer_longitude ?? row?.destination_lng;
+  const validCustLat = isValidCoordinate(rawCustLat, rawCustLng) ? Number(rawCustLat) : null;
+  const validCustLng = isValidCoordinate(rawCustLat, rawCustLng) ? Number(rawCustLng) : null;
+
   return {
     ...row,
     order_code: row?.order_code ?? row?.order_number,
     customer_name: row?.customer_name ?? row?.buyer_name,
     customer_phone: row?.customer_phone ?? row?.buyer_phone,
     customer_address: row?.customer_address ?? row?.buyer_address,
+    customer_latitude: validCustLat,
+    customer_longitude: validCustLng,
     order_total: row?.order_total ?? row?.total,
     delivery_fee: row?.delivery_fee ?? row?.shipping_fee,
     assigned_partner,
@@ -54,6 +70,10 @@ export function normalizeOrder(row: any) {
           shop_name: seller.shop_name ?? seller.business_name,
           address: seller.address ?? address,
           phone: seller.phone,
+          lat: validLat,
+          lng: validLng,
+          latitude: validLat,
+          longitude: validLng,
         }
       : null,
   };
@@ -65,4 +85,3 @@ export function normalizeAssignment(row: any) {
 
 export const DELIVERY_ORDER_SELECT =
   "*, seller:sellers(*), order_items(*), delivery_assignments(*, delivery_partners(*))";
-
