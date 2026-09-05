@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Navigation, MapPin, Loader2 } from "lucide-react";
-import { osmDirections } from "@/lib/delivery";
+import { googleMapsDirections, osmDirections } from "@/lib/delivery";
 import { isValidCoordinate } from "@/lib/geo";
 
 import { getMapTileConfig } from "@/lib/map-provider";
@@ -85,8 +85,6 @@ export function MapPanel({
         });
 
         if (hasTarget && markerType === "rider") {
-          // CircleMarker is rendered by Leaflet's SVG layer and remains visible
-          // even when custom HTML marker icons are blocked by browser styling.
           L.circleMarker([lat as number, lng as number], {
             radius: 12,
             color: "#ffffff",
@@ -154,17 +152,14 @@ export function MapPanel({
     );
   }
 
-  const directUrl =
-    coordinateStatus === "exact" && hasFrom
-      ? osmDirections(from, [lat as number, lng as number])
-      : null;
+  const gmapsUrl = hasTarget ? googleMapsDirections(from, [lat as number, lng as number]) : null;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card">
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
       <div ref={containerRef} className="relative w-full bg-muted" style={{ height }}>
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted/80 text-muted-foreground text-xs gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading OpenStreetMap...
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading Map...
           </div>
         )}
         {coordinateStatus === "approximate" && (
@@ -172,16 +167,32 @@ export function MapPanel({
             Approximate location
           </div>
         )}
+        {gmapsUrl && (
+          <a
+            href={gmapsUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-full bg-emerald-600/90 hover:bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-sm transition-transform active:scale-95"
+            title="Open Turn-by-Turn GPS Navigation in Google Maps"
+          >
+            <Navigation className="h-3.5 w-3.5" />
+            <span>Google Maps GPS 🗺️</span>
+          </a>
+        )}
       </div>
-      <div className="flex items-center justify-between gap-3 border-t border-border bg-card px-3 py-2">
-        <span className="truncate text-xs text-muted-foreground flex items-center gap-1.5">
+      <div className="flex items-center justify-between gap-3 border-t border-border bg-card px-3.5 py-2.5">
+        <span className="truncate text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
           <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
           {label}
         </span>
-        {directUrl ? (
-          <Button asChild size="sm" variant="secondary">
-            <a href={directUrl} target="_blank" rel="noreferrer">
-              <Navigation className="mr-1 h-3.5 w-3.5" /> Open Navigation
+        {gmapsUrl ? (
+          <Button
+            asChild
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-sm shrink-0"
+          >
+            <a href={gmapsUrl} target="_blank" rel="noreferrer">
+              <Navigation className="mr-1.5 h-3.5 w-3.5" /> Navigate in Google Maps
             </a>
           </Button>
         ) : (

@@ -14,7 +14,7 @@ import { formatDistanceShort, formatDurationShort, getManeuverIcon } from "@/lib
 import type { TurnStep, RouteResult } from "@/lib/delivery-routing";
 import { Navigation, Locate, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { osmDirections } from "@/lib/delivery";
+import { googleMapsDirections } from "@/lib/delivery";
 import type { NavigationPhase, ArrivalZone } from "@/hooks/useDriverNavigation";
 
 interface NavigationBarProps {
@@ -76,10 +76,12 @@ export function NavigationBar({
         ? "Route unavailable."
         : null;
 
-  const externalNavUrl =
-    hasRoadRoute && destination && driverPos
-      ? osmDirections([driverPos.lat, driverPos.lng], [destination.lat, destination.lng])
-      : null;
+  const externalNavUrl = destination
+    ? googleMapsDirections(driverPos ? [driverPos.lat, driverPos.lng] : null, [
+        destination.lat,
+        destination.lng,
+      ])
+    : null;
 
   const speedKmh = Math.round((speed || 0) * 3.6);
 
@@ -153,10 +155,11 @@ export function NavigationBar({
               href={externalNavUrl}
               target="_blank"
               rel="noreferrer"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20 active:scale-95 transition-all"
-              title="Open OpenStreetMap Navigation"
+              className="flex items-center gap-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-xs font-bold text-white shadow-lg active:scale-95 transition-all shrink-0"
+              title="Navigate in Google Maps App"
             >
-              <Navigation className="h-4 w-4" />
+              <Navigation className="h-3.5 w-3.5" />
+              <span>Google Maps 🗺️</span>
             </a>
           )}
         </div>

@@ -19,7 +19,13 @@ import { useDriverNavigation, type ArrivalZone } from "@/hooks/useDriverNavigati
 import { LiveNavigationMap } from "@/components/delivery/LiveNavigationMap";
 import { NavigationBar } from "@/components/delivery/NavigationBar";
 import { StatusBadge } from "@/components/delivery/StatusBadge";
-import { DELIVERY_FLOW, nextFlowStep, INR, ASSIGNMENT_STATUS_LABEL } from "@/lib/delivery";
+import {
+  DELIVERY_FLOW,
+  nextFlowStep,
+  INR,
+  ASSIGNMENT_STATUS_LABEL,
+  googleMapsDirections,
+} from "@/lib/delivery";
 import { isValidCoordinate } from "@/lib/geo";
 import { ChevronDown, ChevronUp, MapPin, Navigation, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -154,8 +160,23 @@ export function DeliveryNavigationScreen({
           </div>
         </div>
         <div className="flex items-center gap-1.5 text-xs">
+          {nav.destination && (
+            <a
+              href={googleMapsDirections(
+                nav.displayPos ? [nav.displayPos.lat, nav.displayPos.lng] : null,
+                [nav.destination.lat, nav.destination.lng],
+              )}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 text-xs font-bold shadow-md transition-transform active:scale-95 shrink-0"
+              title="Open Turn-by-Turn GPS in Google Maps App"
+            >
+              <Navigation className="h-3.5 w-3.5" />
+              <span>Google Maps 🗺️</span>
+            </a>
+          )}
           {nav.route && (
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-xs font-semibold text-primary">
+            <span className="hidden sm:inline-block rounded-full bg-primary/10 px-2 py-0.5 font-mono text-xs font-semibold text-primary">
               {nav.route.formattedDuration} · {nav.route.formattedDistance}
             </span>
           )}

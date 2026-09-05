@@ -7,6 +7,7 @@ import {
   Gift,
   LocateFixed,
   MapPin,
+  Navigation,
   Package,
   Star,
   TrendingUp,
@@ -20,7 +21,7 @@ import { EmptyState } from "@/components/delivery/AppShell";
 import { StatusBadge } from "@/components/delivery/StatusBadge";
 import { db } from "@/lib/db";
 import { usePartner } from "@/hooks/usePartner";
-import { ACTIVE_ASSIGNMENT_STATUSES, INR, pct } from "@/lib/delivery";
+import { ACTIVE_ASSIGNMENT_STATUSES, googleMapsDirections, INR, pct } from "@/lib/delivery";
 import { DELIVERY_ORDER_SELECT, normalizeAssignment } from "@/lib/shared-orders";
 import { SafetyActions } from "@/components/delivery/SafetyActions";
 import { MapPanel } from "@/components/delivery/MapPanel";
@@ -504,43 +505,90 @@ function PartnerDashboard() {
               />
             ) : (
               <div className="space-y-3">
-                {active.slice(0, 3).map((a) => (
-                  <div
-                    key={a.id}
-                    className="group rounded-2xl border border-border p-4 transition-smooth hover-lift"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-foreground">
-                          {a.orders?.order_code ?? "Delivery request"}
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {a.orders?.vendors?.shop_name ?? "Local Shore shop"} to{" "}
-                          {a.orders?.customer_name ?? "Customer"}
-                        </p>
+                {active.slice(0, 3).map((a) => {
+                  const isPickup = ["accepted", "navigating_to_vendor", "reached_vendor"].includes(
+                    a.status,
+                  );
+                  const targetLat = isPickup
+                    ? Number(a.orders?.vendors?.latitude)
+                    : Number(a.orders?.delivery_latitude);
+                  const targetLng = isPickup
+                    ? Number(a.orders?.vendors?.longitude)
+                    : Number(a.orders?.delivery_longitude);
+                  const targetValid = isValidCoordinate(targetLat, targetLng);
+                  const navUrl = targetValid
+                    ? googleMapsDirections(
+                        isValidCoordinate(
+                          Number(partner.current_latitude),
+                          Number(partner.current_longitude),
+                        )
+                          ? [Number(partner.current_latitude), Number(partner.current_longitude)]
+                          : null,
+                        [targetLat, targetLng],
+                      )
+                    : null;
+
+                  return (
+                    <div
+                      key={a.id}
+                      className="group rounded-2xl border border-border p-4 transition-smooth hover-lift"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-foreground">
+                            {a.orders?.order_code ?? "Delivery request"}
+                          </p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {a.orders?.vendors?.shop_name ?? "Local Shore shop"} to{" "}
+                            {a.orders?.customer_name ?? "Customer"}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <StatusBadge status={a.status} />
+                          {navUrl && (
+                            <Button
+                              asChild
+                              size="sm"
+                              className="h-7 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-sm shrink-0"
+                            >
+                              <a
+                                href={navUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                title="Open Turn-by-Turn GPS Navigation"
+                              >
+                                <Navigation className="mr-1 h-3 w-3" />
+                                Navigate 🗺️
+                              </a>
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                      <StatusBadge status={a.status} />
+                      <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                        <Info
+                          icon={<MapPin className="h-3.5 w-3.5" />}
+                          label="Distance"
+                          value={`${Number(a.distance_km ?? 0).toFixed(1)} km`}
+                        />
+                        <Info
+                          icon={<Clock3 className="h-3.5 w-3.5" />}
+                          label="ETA"
+                          value="~30 min"
+                        />
+                        <Info
+                          icon={<Wallet className="h-3.5 w-3.5" />}
+                          label="Order total"
+                          value={INR(a.orders?.order_total ?? 0)}
+                        />
+                        <Info
+                          icon={<Wallet className="h-3.5 w-3.5" />}
+                          label="Earn"
+                          value={INR(a.estimated_earning ?? 0)}
+                        />
+                      </div>
                     </div>
-                    <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-                      <Info
-                        icon={<MapPin className="h-3.5 w-3.5" />}
-                        label="Distance"
-                        value={`${Number(a.distance_km ?? 0).toFixed(1)} km`}
-                      />
-                      <Info icon={<Clock3 className="h-3.5 w-3.5" />} label="ETA" value="~30 min" />
-                      <Info
-                        icon={<Wallet className="h-3.5 w-3.5" />}
-                        label="Order total"
-                        value={INR(a.orders?.order_total ?? 0)}
-                      />
-                      <Info
-                        icon={<Wallet className="h-3.5 w-3.5" />}
-                        label="Earn"
-                        value={INR(a.estimated_earning ?? 0)}
-                      />
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>
