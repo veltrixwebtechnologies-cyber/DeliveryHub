@@ -54,7 +54,7 @@ function LiveLocationCard({ partner }: { partner: NonNullable<ReturnType<typeof 
   useEffect(() => {
     if (isValidCoordinate(savedLocation.lat, savedLocation.lng)) {
       setLocation(savedLocation);
-      setStatus("Showing your last known location");
+      setStatus(partner.availability === "online" ? "Live tracking active" : "Showing your last known location");
     }
 
     if (partner.availability === "offline" || !("geolocation" in navigator)) return;
@@ -81,6 +81,20 @@ function LiveLocationCard({ partner }: { partner: NonNullable<ReturnType<typeof 
 
     return () => navigator.geolocation.clearWatch(watchId);
   }, [partner.id, partner.availability, partner.current_latitude, partner.current_longitude]);
+
+  useEffect(() => {
+    const onParentLocation = (event: Event) => {
+      const detail = (event as CustomEvent<{ lat?: number; lng?: number }>).detail;
+      const nextLat = Number(detail?.lat);
+      const nextLng = Number(detail?.lng);
+      if (isValidCoordinate(nextLat, nextLng)) {
+        setLocation({ lat: nextLat, lng: nextLng });
+        setStatus("Live location updating");
+      }
+    };
+    window.addEventListener("partner-location-update", onParentLocation);
+    return () => window.removeEventListener("partner-location-update", onParentLocation);
+  }, []);
 
   useEffect(() => {
     const channel = supabase

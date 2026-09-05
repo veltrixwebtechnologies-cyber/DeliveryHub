@@ -255,6 +255,11 @@ function PartnerLayout() {
     }
     locationErrorShownRef.current = false;
     lastActivityRef.current = Date.now();
+    window.dispatchEvent(
+      new CustomEvent("partner-location-update", {
+        detail: { lat: pos.coords.latitude, lng: pos.coords.longitude },
+      }),
+    );
     return true;
   }, []);
 
