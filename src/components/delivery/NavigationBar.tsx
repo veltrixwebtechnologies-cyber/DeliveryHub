@@ -75,8 +75,11 @@ export function NavigationBar({
 
   return (
     <div className="flex flex-col gap-0">
+      {externalNavUrl && !isStale && (
+        <a className="block text-center text-sm underline py-2" href={externalNavUrl} target="_blank" rel="noreferrer">Open road directions in OpenStreetMap (car)</a>
+      )}
       {/* ── Turn-by-turn Instruction Card ── */}
-      {nextStep && !isArrived && (
+      {route && nextStep && !isArrived && !isStale && (
         <div
           className="rounded-2xl px-4 py-3.5 shadow-xl ring-1 ring-white/10 backdrop-blur-lg"
           style={{ backgroundColor: `${phaseColor}F0` }}
@@ -155,14 +158,14 @@ export function NavigationBar({
             <div>
               <p className="font-mono text-xs text-slate-500">ETA</p>
               <p className="font-mono text-lg font-bold text-emerald-400">
-                {isRerouting ? "..." : formatDurationShort(etaSeconds)}
+                {!route || isStale ? "—" : isRerouting ? "..." : formatDurationShort(etaSeconds)}
               </p>
             </div>
             {/* Distance */}
             <div>
               <p className="font-mono text-xs text-slate-500">DIST</p>
               <p className="font-mono text-lg font-bold text-white">
-                {isRerouting ? "..." : formatDistanceShort(distanceToDestM)}
+                {!route || isStale ? "—" : isRerouting ? "..." : formatDistanceShort(distanceToDestM)}
               </p>
             </div>
             {/* Speed */}
@@ -205,7 +208,7 @@ export function NavigationBar({
               {!isStale && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-75" />}
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-current" />
             </span>
-            {isStale ? "GPS stale" : accuracy ? `±${Math.round(accuracy)}m` : "GPS active"}
+            {!driverPos ? "Waiting for GPS" : isStale ? "GPS stale" : accuracy !== null ? `±${Math.round(accuracy)}m` : "GPS accuracy unknown"}
           </span>
           {isOffRoute && (
             <span className="text-red-400 font-semibold">⚠ OFF ROUTE</span>

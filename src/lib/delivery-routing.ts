@@ -1,3 +1,4 @@
+import { parseCoordinates } from "./coordinates";
 /**
  * LocalShore Delivery Partner Hub — OSRM Road Routing & Navigation Engine
  * Uses real OSRM for road-following routes, turn-by-turn instructions,
@@ -11,6 +12,7 @@ export interface MapLocation {
 
 export interface TurnStep {
   instruction: string;
+  startDistanceMeters?: number;
   distanceMeters: number;
   durationSeconds: number;
   name: string;
@@ -37,15 +39,15 @@ const MANEUVER_ICONS: Record<string, string> = {
   "sharp left": "⤴",
   "slight right": "↗",
   "slight left": "↖",
-  "straight": "↑",
-  "uturn": "↩",
-  "merge": "⤞",
+  straight: "↑",
+  uturn: "↩",
+  merge: "⤞",
   "fork-right": "⑂",
   "fork-left": "⑂",
-  "roundabout": "↻",
-  "rotary": "↻",
-  "depart": "🚩",
-  "arrive": "📍",
+  roundabout: "↻",
+  rotary: "↻",
+  depart: "🚩",
+  arrive: "📍",
 };
 
 export function formatManeuver(type: string, modifier: string): string {
@@ -73,7 +75,7 @@ export function formatManeuver(type: string, modifier: string): string {
     "roundabout-": "Enter roundabout",
     "rotary-": "Enter rotary",
     "depart-": "Start",
-    "arrive-": "You have arrived",
+    "arrive-": "Arrive at destination",
     "end of road-right": "Turn right",
     "end of road-left": "Turn left",
     continue: "Continue",
@@ -83,7 +85,9 @@ export function formatManeuver(type: string, modifier: string): string {
 }
 
 export function getManeuverIcon(type: string, modifier: string): string {
-  return MANEUVER_ICONS[`${type}-${modifier}`] || MANEUVER_ICONS[modifier] || MANEUVER_ICONS[type] || "→";
+  return (
+    MANEUVER_ICONS[`${type}-${modifier}`] || MANEUVER_ICONS[modifier] || MANEUVER_ICONS[type] || "→"
+  );
 }
 
 export function formatDistanceShort(meters: number): string {
@@ -106,105 +110,130 @@ export async function fetchDeliveryRoute(
   origin: MapLocation,
   destination: MapLocation,
   phase: "to_vendor" | "to_customer" = "to_customer",
-  retries = 2
+  retries = 1,
+  signal?: AbortSignal,
 ): Promise<RouteResult> {
+  if (
+    !parseCoordinates(origin.lat, origin.lng) ||
+    !parseCoordinates(destination.lat, destination.lng)
+  ) {
+    throw new Error("A confirmed pickup/drop-off pin and rider location are required.");
+  }
   const baseUrl =
-    (typeof import.meta !== "undefined" && import.meta.env?.["VITE_ROUTING_API_URL"]) ||
-    "https://router.project-osrm.org/route/v1/driving";
-
-  const coords = `${origin.lng},${origin.lat};${destination.lng},${destination.lat}`;
-  const url = `${baseUrl}/${coords}?overview=full&geometries=geojson&steps=true`;
-
+    import.meta.env?.["VITE_ROUTING_API_URL"] || "https://router.project-osrm.org/route/v1/driving";
+  const url =
+    baseUrl.replace(/\/$/, "") +
+    "/" +
+    origin.lng +
+    "," +
+    origin.lat +
+    ";" +
+    destination.lng +
+    "," +
+    destination.lat +
+    "?overview=full&geometries=geojson&steps=true&radiuses=150;150";
+  let failure: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
+    signal?.throwIfAborted();
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    const timeout = setTimeout(abort, 8000);
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeoutId);
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data = await res.json();
-      if (!data.routes || data.routes.length === 0) throw new Error("No routes returned");
-
-      const route = data.routes[0];
-      const distanceMeters = Math.round(route.distance);
-      const durationSeconds = Math.round(route.duration);
-      const geometry = route.geometry.coordinates as [number, number][];
-
-      const steps: TurnStep[] = (route.legs?.[0]?.steps || [])
-        .filter((step: any) => step.distance > 0 || step.maneuver?.type === "arrive")
-        .map((step: any) => ({
-          instruction: formatManeuver(step.maneuver?.type ?? "continue", step.maneuver?.modifier ?? ""),
-          distanceMeters: Math.round(step.distance || 0),
-          durationSeconds: Math.round(step.duration || 0),
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) throw new Error("Routing service returned HTTP " + response.status);
+      const data = await response.json();
+      signal?.throwIfAborted();
+      const route = data.routes?.[0];
+      if (data.code !== "Ok" || !route)
+        throw new Error(
+          "No road route connects these pins. Check the pickup and delivery entrances.",
+        );
+      const geometry = route.geometry?.coordinates;
+      if (
+        !Array.isArray(geometry) ||
+        geometry.length < 2 ||
+        geometry.some((p: unknown) => !Array.isArray(p) || !parseCoordinates(p[1], p[0]))
+      ) {
+        throw new Error("Routing service returned invalid geometry.");
+      }
+      if (
+        !Number.isFinite(route.distance) ||
+        route.distance < 0 ||
+        !Number.isFinite(route.duration) ||
+        route.duration < 0
+      ) {
+        throw new Error("Routing service returned invalid distance or duration.");
+      }
+      if (
+        !Array.isArray(data.waypoints) ||
+        data.waypoints.length !== 2 ||
+        data.waypoints.some((w: any) => !Number.isFinite(w.distance) || w.distance > 150)
+      ) {
+        throw new Error("A pin is too far from a routable road. Confirm the road entrance.");
+      }
+      let startDistanceMeters = 0;
+      const steps: TurnStep[] = (route.legs?.[0]?.steps ?? []).map((step: any) => {
+        const distanceMeters = Math.max(0, Number(step.distance) || 0);
+        const result = {
+          instruction: formatManeuver(
+            step.maneuver?.type ?? "continue",
+            step.maneuver?.modifier ?? "",
+          ),
+          startDistanceMeters,
+          distanceMeters,
+          durationSeconds: Math.max(0, Number(step.duration) || 0),
           name: step.name || "",
-          maneuverType: step.maneuver?.type ?? "",
-          maneuverModifier: step.maneuver?.modifier ?? "",
-        }));
-
+          maneuverType: step.maneuver?.type || "",
+          maneuverModifier: step.maneuver?.modifier || "",
+        };
+        startDistanceMeters += distanceMeters;
+        return result;
+      });
       return {
-        distanceMeters,
-        durationSeconds,
+        distanceMeters: route.distance,
+        durationSeconds: route.duration,
         geometry,
         steps,
-        formattedDistance: formatDistanceShort(distanceMeters),
-        formattedDuration: formatDurationShort(durationSeconds),
         phase,
+        formattedDistance: formatDistanceShort(route.distance),
+        formattedDuration: formatDurationShort(route.duration),
       };
-    } catch (err) {
-      if (attempt === retries) {
-        console.warn(`[Routing] OSRM failed after ${retries + 1} attempts, using fallback`, err);
-        return straightLineFallback(origin, destination, phase);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 400 * Math.pow(2, attempt)));
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      failure = error;
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
     }
   }
-
-  return straightLineFallback(origin, destination, phase);
-}
-
-function straightLineFallback(
-  origin: MapLocation,
-  destination: MapLocation,
-  phase: "to_vendor" | "to_customer"
-): RouteResult {
-  const distKm = haversineDistanceKm(origin.lat, origin.lng, destination.lat, destination.lng);
-  const distMeters = Math.round(distKm * 1000);
-  const durSec = Math.round((distKm / 22) * 3600);
-  return {
-    distanceMeters: distMeters,
-    durationSeconds: durSec,
-    geometry: [
-      [origin.lng, origin.lat],
-      [destination.lng, destination.lat],
-    ],
-    steps: [{ instruction: "Head toward destination", distanceMeters: distMeters, durationSeconds: durSec, name: "", maneuverType: "depart", maneuverModifier: "" }],
-    formattedDistance: formatDistanceShort(distMeters),
-    formattedDuration: formatDurationShort(durSec),
-    phase,
-  };
+  throw failure instanceof Error
+    ? failure
+    : new Error("Road routing is unavailable. Please retry.");
 }
 
 // ── Geometry Helpers ─────────────────────────────────────────────────
 
 export function haversineDistanceKm(
-  lat1: number, lon1: number, lat2: number, lon2: number
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
 ): number {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 export function haversineDistanceMeters(
-  lat1: number, lon1: number, lat2: number, lon2: number
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
 ): number {
   return haversineDistanceKm(lat1, lon1, lat2, lon2) * 1000;
 }
@@ -212,123 +241,71 @@ export function haversineDistanceMeters(
 /**
  * Shortest distance in meters from a point to a polyline
  */
-export function distanceToPolylineMeters(
-  point: MapLocation,
-  geometry: [number, number][]
-): number {
-  if (!geometry || geometry.length === 0) return Infinity;
-  let minDist = Infinity;
-  for (const [lng, lat] of geometry) {
-    const d = haversineDistanceMeters(point.lat, point.lng, lat, lng);
-    if (d < minDist) minDist = d;
+export function routeProgress(point: MapLocation, geometry: [number, number][]) {
+  let offRouteMeters = Infinity,
+    alongMeters = 0,
+    totalMeters = 0;
+  for (let i = 1; i < geometry.length; i++) {
+    const a = geometry[i - 1]!,
+      b = geometry[i]!;
+    const scale = Math.cos((point.lat * Math.PI) / 180);
+    const ax = (a[0] - point.lng) * scale,
+      ay = a[1] - point.lat;
+    const bx = (b[0] - point.lng) * scale,
+      by = b[1] - point.lat;
+    const dx = bx - ax,
+      dy = by - ay;
+    const t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy || 1)));
+    const lat = a[1] + (b[1] - a[1]) * t,
+      lng = a[0] + (b[0] - a[0]) * t;
+    const distance = haversineDistanceMeters(point.lat, point.lng, lat, lng);
+    const length = haversineDistanceMeters(a[1], a[0], b[1], b[0]);
+    if (distance < offRouteMeters) {
+      offRouteMeters = distance;
+      alongMeters = totalMeters + length * t;
+    }
+    totalMeters += length;
   }
-  return minDist;
+  return {
+    offRouteMeters,
+    alongMeters,
+    totalMeters,
+    remainingMeters: Math.max(0, totalMeters - alongMeters),
+  };
 }
 
-/**
- * Calculate bearing (0-360°) between two points
- */
-export function calculateBearing(
-  lat1: number, lon1: number, lat2: number, lon2: number
-): number {
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const y = Math.sin(dLon) * Math.cos((lat2 * Math.PI) / 180);
-  const x =
-    Math.cos((lat1 * Math.PI) / 180) * Math.sin((lat2 * Math.PI) / 180) -
-    Math.sin((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.cos(dLon);
+export function distanceToPolylineMeters(point: MapLocation, geometry: [number, number][]): number {
+  return routeProgress(point, geometry).offRouteMeters;
+}
+
+export function calculateBearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const a = (lat1 * Math.PI) / 180,
+    b = (lat2 * Math.PI) / 180;
+  const delta = ((lon2 - lon1) * Math.PI) / 180;
+  const y = Math.sin(delta) * Math.cos(b);
+  const x = Math.cos(a) * Math.sin(b) - Math.sin(a) * Math.cos(b) * Math.cos(delta);
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
-/**
- * Should we recalculate the route? Smart debounce logic.
- */
-export function shouldRecalculateRoute(
-  currentPos: MapLocation,
-  lastCalculatedPos: MapLocation | null,
-  geometry: [number, number][] | null,
-  lastCalculatedAt: number,
-  phaseChanged: boolean
-): boolean {
-  // Always recalculate if phase changed (vendor → customer)
-  if (phaseChanged) return true;
-
-  // If no previous route exists
-  if (!geometry || geometry.length === 0 || !lastCalculatedPos) return true;
-
-  // Off-route check (> 80 meters away from polyline)
-  const offRouteDistance = distanceToPolylineMeters(currentPos, geometry);
-  if (offRouteDistance > 80) {
-    console.info(`[Routing] Off-route: ${offRouteDistance.toFixed(0)}m from path`);
-    return true;
-  }
-
-  // Meaningful distance & time elapsed (> 200m moved AND > 25s elapsed)
-  const movedKm = haversineDistanceKm(
-    currentPos.lat, currentPos.lng,
-    lastCalculatedPos.lat, lastCalculatedPos.lng
-  );
-  const timeElapsedSec = (Date.now() - lastCalculatedAt) / 1000;
-
-  if (movedKm > 0.2 && timeElapsedSec > 25) return true;
-
-  // Periodic refresh every 60 seconds if route exists
-  if (timeElapsedSec > 60) return true;
-
-  return false;
-}
-
-/**
- * Find the next upcoming step based on driver position
- */
 export function findNextStep(
   driverPos: MapLocation,
   steps: TurnStep[],
-  geometry: [number, number][]
+  geometry: [number, number][],
 ): { step: TurnStep; distanceToStep: number; index: number } | null {
-  if (!steps.length || !geometry.length) return null;
-
-  // Find which segment of the route we're closest to
-  let minDist = Infinity;
-  let closestIdx = 0;
-  for (let i = 0; i < geometry.length; i++) {
-    const coord = geometry[i];
-    if (!coord) continue;
-    const d = haversineDistanceMeters(driverPos.lat, driverPos.lng, coord[1], coord[0]);
-    if (d < minDist) {
-      minDist = d;
-      closestIdx = i;
-    }
-  }
-
-  // Accumulate distances from steps to match geometry progress
-  let accumulatedDist = 0;
-  let geoIdx = 0;
-  const totalDist = steps.reduce((s, st) => s + st.distanceMeters, 0) || 1;
+  if (!steps.length || geometry.length < 2) return null;
+  const progress = routeProgress(driverPos, geometry);
+  const roadLength = steps.reduce((sum, step) => sum + step.distanceMeters, 0);
+  const travelled = progress.totalMeters
+    ? (progress.alongMeters / progress.totalMeters) * roadLength
+    : 0;
+  let offset = 0;
   for (let i = 0; i < steps.length; i++) {
-    const currentStep = steps[i];
-    if (!currentStep) continue;
-    accumulatedDist += currentStep.distanceMeters;
-    // Rough mapping of distance to geometry index
-    const targetGeoIdx = Math.min(
-      geometry.length - 1,
-      Math.round((accumulatedDist / totalDist) * geometry.length)
-    );
-    geoIdx = targetGeoIdx;
-
-    if (geoIdx >= closestIdx) {
-      const geoCoord = geometry[Math.min(geoIdx, geometry.length - 1)];
-      const distToStep = geoCoord
-        ? haversineDistanceMeters(driverPos.lat, driverPos.lng, geoCoord[1], geoCoord[0])
-        : minDist;
-      return { step: currentStep, distanceToStep: distToStep, index: i };
+    const step = steps[i]!;
+    const start = step.startDistanceMeters ?? offset;
+    if (start > travelled + 5 || i === steps.length - 1) {
+      return { step, index: i, distanceToStep: Math.max(0, start - travelled) };
     }
+    offset += step.distanceMeters;
   }
-
-  // Default to last step
-  const lastStep = steps[steps.length - 1];
-  if (lastStep) {
-    return { step: lastStep, distanceToStep: minDist, index: steps.length - 1 };
-  }
-
   return null;
 }

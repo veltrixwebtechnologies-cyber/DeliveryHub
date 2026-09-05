@@ -1,3 +1,4 @@
+import { freshPartnerCoordinates, usableGPS } from "@/lib/coordinates";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -151,7 +152,7 @@ function Deliveries() {
   }, [contactWaitUntil]);
 
   useEffect(() => {
-    if (active?.id) {
+    if (active?.id && !navMode) {
       deliveryTracker.startTracking(active.id);
     } else {
       deliveryTracker.stopTracking();
@@ -159,7 +160,7 @@ function Deliveries() {
     return () => {
       deliveryTracker.stopTracking();
     };
-  }, [active?.id]);
+  }, [active?.id, navMode]);
 
   async function advance() {
     if (!active || completionInFlightRef.current) return;
@@ -299,11 +300,9 @@ function Deliveries() {
   const vendor = order?.vendors;
   const step = active ? DELIVERY_FLOW.findIndex((s) => s.status === active.status) : -1;
   const next = active ? nextFlowStep(active.status) : null;
-  const dropping = active?.status === "out_for_delivery";
+  const dropping = ["picked_up", "out_for_delivery"].includes(active?.status);
   const from: [number, number] | null =
-    Number.isFinite(partner.current_latitude) && Number.isFinite(partner.current_longitude)
-      ? [partner.current_latitude!, partner.current_longitude!]
-      : null;
+    freshPartnerCoordinates(partner);
   const hasCustomerCoordinates =
     Number.isFinite(order?.customer_latitude) && Number.isFinite(order?.customer_longitude);
   const hasVendorCoordinates =

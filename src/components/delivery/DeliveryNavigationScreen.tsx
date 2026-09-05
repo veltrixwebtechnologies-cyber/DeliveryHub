@@ -1,3 +1,4 @@
+import { parseCoordinates } from "@/lib/coordinates";
 /**
  * DeliveryNavigationScreen — Full Swiggy/Zomato-style real-time delivery navigation
  * 
@@ -55,19 +56,8 @@ export function DeliveryNavigationScreen({
   const [showVerificationModal, setShowVerificationModal] = useState(false);
 
   // ── Parse locations ──
-  const vendorLocation = useMemo(() => {
-    const lat = Number(vendor?.latitude ?? vendor?.lat);
-    const lng = Number(vendor?.longitude ?? vendor?.lng);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
-    return null;
-  }, [vendor]);
-
-  const customerLocation = useMemo(() => {
-    const lat = Number(order?.customer_latitude);
-    const lng = Number(order?.customer_longitude);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
-    return null;
-  }, [order]);
+  const vendorLocation = useMemo(() => parseCoordinates(vendor?.latitude, vendor?.longitude), [vendor?.latitude, vendor?.longitude]);
+  const customerLocation = useMemo(() => parseCoordinates(order?.customer_latitude, order?.customer_longitude), [order?.customer_latitude, order?.customer_longitude]);
 
   const vendorLabel = vendor?.shop_name || vendor?.business_name || "Shop";
   const customerLabel = order?.customer_name || order?.buyer_name || "Customer";
@@ -158,6 +148,11 @@ export function DeliveryNavigationScreen({
         </div>
       </div>
 
+      {(nav.error || !nav.driverPos) && (
+        <div role="status" className="bg-amber-50 text-amber-950 px-4 py-3 text-sm border-b">
+          {nav.error || "Waiting for your current GPS location. Allow precise location to start navigation."}
+        </div>
+      )}
       {/* ── Map area (fills remaining space) ── */}
       <div className="relative flex-1 min-h-0">
         <LiveNavigationMap

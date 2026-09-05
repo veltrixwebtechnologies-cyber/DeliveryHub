@@ -104,10 +104,13 @@ export function LiveNavigationMap({
   const pulseRef = useRef<any>(null);
   const [isUserPanning, setIsUserPanning] = useState(false);
   const [mapReady, setMapReady] = useState(false);
+  const fittedDestinationRef = useRef("");
+  const driverAnimationRef = useRef<number | null>(null);
 
   // ── Initialize Leaflet map (once) ──
   useEffect(() => {
     let cancelled = false;
+    let resizeObserver: ResizeObserver | undefined;
 
     (async () => {
       try {
@@ -129,7 +132,7 @@ export function LiveNavigationMap({
           zoom: 16,
           maxZoom: 19,
           zoomControl: false,
-          attributionControl: false,
+          attributionControl: true,
         });
 
         // Configurable OpenStreetMap tile layer
@@ -147,7 +150,7 @@ export function LiveNavigationMap({
 
         // Observe container resizes (flex layout adjustments)
         if (typeof ResizeObserver !== "undefined") {
-          const ro = new ResizeObserver(() => {
+          const ro = resizeObserver = new ResizeObserver(() => {
             map.invalidateSize();
           });
           ro.observe(containerRef.current);
@@ -168,6 +171,8 @@ export function LiveNavigationMap({
 
     return () => {
       cancelled = true;
+      resizeObserver?.disconnect();
+      if (driverAnimationRef.current !== null) cancelAnimationFrame(driverAnimationRef.current);
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -208,6 +213,7 @@ export function LiveNavigationMap({
 
         // Smooth animation for driver marker
         if (id === "driver") {
+          if (driverAnimationRef.current !== null) cancelAnimationFrame(driverAnimationRef.current);
           const startLL = marker.getLatLng();
           const startTime = performance.now();
           const duration = 500;
@@ -219,9 +225,9 @@ export function LiveNavigationMap({
               startLL.lat + (pos.lat - startLL.lat) * ease,
               startLL.lng + (pos.lng - startLL.lng) * ease,
             ]);
-            if (t < 1) requestAnimationFrame(animate);
+            if (t < 1) driverAnimationRef.current = requestAnimationFrame(animate);
           };
-          requestAnimationFrame(animate);
+          driverAnimationRef.current = requestAnimationFrame(animate);
         } else {
           marker.setLatLng([pos.lat, pos.lng]);
         }
@@ -238,6 +244,10 @@ export function LiveNavigationMap({
     if (!L || !map) return;
 
     // Driver marker with heading rotation
+    if (!driverPos) {
+      upsertMarker("driver", null, "", [48, 48]);
+      if (pulseRef.current) { map.removeLayer(pulseRef.current); pulseRef.current = null; }
+    }
     if (driverPos) {
       const driverColor = isOffRoute ? "#EF4444" : isStale ? "#F59E0B" : "#10B981";
       upsertMarker(
@@ -266,12 +276,14 @@ export function LiveNavigationMap({
     }
 
     // Vendor marker
+    if (!vendorLocation) upsertMarker("vendor", null, "", [36, 48]);
     if (vendorLocation) {
       const vendorColor = phase === "to_vendor" ? "#8B5CF6" : "#6B7280";
       upsertMarker("vendor", vendorLocation, destinationPinSvg(vendorColor, "🏪"), [36, 48], [18, 48]);
     }
 
     // Customer marker
+    if (!customerLocation) upsertMarker("customer", null, "", [36, 48]);
     if (customerLocation) {
       const customerColor = phase === "to_customer" ? "#E3A72E" : "#6B7280";
       upsertMarker("customer", customerLocation, destinationPinSvg(customerColor, "🏠"), [36, 48], [18, 48]);
@@ -290,7 +302,7 @@ export function LiveNavigationMap({
       polylineRef.current = null;
     }
 
-    if (route?.geometry && route.geometry.length > 0) {
+    if (route?.phase === phase && route.geometry.length > 0) {
       const latLngs = route.geometry.map(([lng, lat]: [number, number]) => [lat, lng]);
       
       const routeColor = phase === "to_vendor" ? "#8B5CF6" : "#3B82F6";
@@ -304,7 +316,9 @@ export function LiveNavigationMap({
       }).addTo(map);
 
       // Only auto-fit bounds on initial load if not panning
-      if (!isUserPanning) {
+      const destinationKey = [phase, destination?.lat, destination?.lng].join(":");
+      if (!isUserPanning && fittedDestinationRef.current !== destinationKey) {
+        fittedDestinationRef.current = destinationKey;
         try {
           const bounds = polylineRef.current.getBounds();
           if (bounds.isValid()) {
@@ -315,7 +329,9 @@ export function LiveNavigationMap({
         }
       }
     }
-  }, [route, phase, mapReady, isUserPanning]);
+  }, [route, phase, mapReady, isUserPanning, destination?.lat, destination?.lng]);
+
+  useEffect(() => { if (followMode) setIsUserPanning(false); }, [followMode]);
 
   // ── Follow driver mode: center map on driver ──
   useEffect(() => {

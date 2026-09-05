@@ -1,3 +1,4 @@
+import { pickupCoordinates } from "./coordinates";
 /**
  * The customer and seller apps use the shared marketplace schema:
  * orders.seller_id, order_number, buyer_* and order_items. The delivery UI
@@ -5,13 +6,15 @@
  */
 export function normalizeOrder(row: any) {
   const seller = row?.seller ?? row?.vendors ?? null;
-  const address = [
+  const pickup = pickupCoordinates(seller);
+  const w = seller?.wizard_data;
+  const address = (w?.pickupSame === false ? [w.pickupAddress, w.pickupCity, w.pickupState, w.pickupPincode] : [
     seller?.address_line1,
     seller?.address_line2,
     seller?.city,
     seller?.state,
     seller?.pincode,
-  ]
+  ])
     .filter(Boolean)
     .join(", ");
 
@@ -52,7 +55,9 @@ export function normalizeOrder(row: any) {
       ? {
           ...seller,
           shop_name: seller.shop_name ?? seller.business_name,
-          address: seller.address ?? address,
+          address: w?.pickupSame === false ? address : seller.address ?? address,
+          latitude: pickup?.lat ?? null, longitude: pickup?.lng ?? null,
+          lat: pickup?.lat ?? null, lng: pickup?.lng ?? null,
           phone: seller.phone,
         }
       : null,

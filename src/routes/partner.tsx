@@ -1,3 +1,4 @@
+import { freshPartnerCoordinates, usableGPS } from "@/lib/coordinates";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -228,20 +229,18 @@ function PartnerLayout() {
   );
 
   const submitPosition = useCallback(async (pos: GeolocationPosition) => {
-    // Desktop/browser geolocation can report a very coarse accuracy value.
-    // Keep the coordinates, but omit an unusable accuracy value so older
-    // deployed RPCs do not reject an otherwise valid location update.
-    const reportedAccuracy = pos.coords.accuracy;
-    const accuracy =
-      Number.isFinite(reportedAccuracy) && reportedAccuracy > 0 && reportedAccuracy <= 2000
-        ? reportedAccuracy
-        : null;
+    if (!usableGPS(pos)) {
+      if (!locationErrorShownRef.current) toast.error("A fresh, precise location is required. Enable precise GPS and try again.");
+      locationErrorShownRef.current = true;
+      return false;
+    }
+    const accuracy = pos.coords.accuracy;
     try {
       await locationService.submitCurrentLocation({
         latitude: pos.coords.latitude,
         longitude: pos.coords.longitude,
         accuracyM: accuracy,
-        capturedAt: new Date().toISOString(),
+        capturedAt: new Date(pos.timestamp).toISOString(),
       });
     } catch (error) {
       console.error("[delivery-location] update failed", error);
@@ -349,7 +348,7 @@ function PartnerLayout() {
 
   // Live location while online
   useEffect(() => {
-    if (!partner || partner.availability === "offline") return;
+    if (!partner || partner.availability !== "online") return;
     if (!("geolocation" in navigator)) return;
 
     // Submit immediately so a newly-online partner can receive dispatches
@@ -357,8 +356,8 @@ function PartnerLayout() {
     requestCurrentPosition();
 
     watchRef.current = navigator.geolocation.watchPosition(submitPosition, handlePositionError, {
-      enableHighAccuracy: false,
-      maximumAge: 30_000,
+      enableHighAccuracy: true,
+      maximumAge: 5000,
       timeout: 30_000,
     });
 
@@ -708,9 +707,7 @@ function PartnerLayout() {
   const requestHasVendorCoordinates =
     Number.isFinite(vendor?.latitude) && Number.isFinite(vendor?.longitude);
   const requestFrom: [number, number] | null =
-    Number.isFinite(partner.current_latitude) && Number.isFinite(partner.current_longitude)
-      ? [partner.current_latitude!, partner.current_longitude!]
-      : null;
+    freshPartnerCoordinates(partner);
 
   return (
     <AppShell

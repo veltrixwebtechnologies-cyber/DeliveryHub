@@ -9,7 +9,8 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test:maps": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "5.5.7",
@@ -83,6 +84,7 @@
     "globals": "^15.15.0",
     "nitro": "3.0.260603-beta",
     "prettier": "^3.7.3",
+    "react-test-renderer": "^19.2.8",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
     "vite": "^8.1.5"
