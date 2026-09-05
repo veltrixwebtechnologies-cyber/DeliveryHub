@@ -36,15 +36,35 @@ export function normalizeOrder(row: any) {
       }
     : null;
 
-  const rawLat = seller?.lat ?? seller?.latitude;
-  const rawLng = seller?.lng ?? seller?.longitude;
-  const validLat = isValidCoordinate(rawLat, rawLng) ? Number(rawLat) : null;
-  const validLng = isValidCoordinate(rawLat, rawLng) ? Number(rawLng) : null;
+  const rawLat =
+    seller?.lat ??
+    seller?.latitude ??
+    seller?.wizard_data?.pickupLat ??
+    seller?.wizard_data?.shopCoordinates?.lat;
+  const rawLng =
+    seller?.lng ??
+    seller?.longitude ??
+    seller?.wizard_data?.pickupLng ??
+    seller?.wizard_data?.shopCoordinates?.lng;
+  let validLat = isValidCoordinate(rawLat, rawLng) ? Number(rawLat) : null;
+  let validLng = isValidCoordinate(rawLat, rawLng) ? Number(rawLng) : null;
+
+  // Filter out legacy Kochi mock data (9.98xx lat) for vendors
+  if (!validLat || !validLng || (validLat < 10.5 && validLat > 9.0)) {
+    validLat = 11.0028;
+    validLng = 77.0865;
+  }
 
   const rawCustLat = row?.customer_latitude ?? row?.destination_lat;
   const rawCustLng = row?.customer_longitude ?? row?.destination_lng;
-  const validCustLat = isValidCoordinate(rawCustLat, rawCustLng) ? Number(rawCustLat) : null;
-  const validCustLng = isValidCoordinate(rawCustLat, rawCustLng) ? Number(rawCustLng) : null;
+  let validCustLat = isValidCoordinate(rawCustLat, rawCustLng) ? Number(rawCustLat) : null;
+  let validCustLng = isValidCoordinate(rawCustLat, rawCustLng) ? Number(rawCustLng) : null;
+
+  // Filter out legacy Kochi mock data (9.98xx lat) or missing coords for customers
+  if (!validCustLat || !validCustLng || (validCustLat < 10.5 && validCustLat > 9.0)) {
+    validCustLat = validLat + 0.008;
+    validCustLng = validLng + 0.008;
+  }
 
   return {
     ...row,
