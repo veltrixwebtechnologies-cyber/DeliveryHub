@@ -129,9 +129,45 @@ export function osmEmbed(lat: number, lng: number, zoomPad = 0.012) {
   return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lng}`;
 }
 
-export function osmDirections(from: [number, number] | null, to: [number, number]) {
-  const f = from ? `${from[0]},${from[1]}` : "";
-  return `https://www.openstreetmap.org/directions?engine=fossgis_osrm_bike&route=${f};${to[0]},${to[1]}`;
+export function osmDirections(from: [number, number] | null | undefined, to: [number, number] | null | undefined) {
+  const isValid = (c: [number, number] | null | undefined): c is [number, number] =>
+    !!c && Number.isFinite(c[0]) && Number.isFinite(c[1]) && !(c[0] === 0 && c[1] === 0) && Math.abs(c[0]) <= 90 && Math.abs(c[1]) <= 180;
+
+  const validTo = isValid(to) ? to : null;
+  const validFrom = isValid(from) ? from : null;
+
+  if (!validTo && !validFrom) {
+    return `https://www.openstreetmap.org/#map=15/11.0168/76.9558`;
+  }
+
+  if (!validTo) {
+    return `https://www.openstreetmap.org/?mlat=${validFrom![0]}&mlon=${validFrom![1]}#map=16/${validFrom![0]}/${validFrom![1]}`;
+  }
+
+  if (!validFrom) {
+    return `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${validTo[0]},${validTo[1]}`;
+  }
+
+  return `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${validFrom[0]},${validFrom[1]};${validTo[0]},${validTo[1]}`;
+}
+
+export function googleMapsDirections(from: [number, number] | null | undefined, to: [number, number] | null | undefined) {
+  const isValid = (c: [number, number] | null | undefined): c is [number, number] =>
+    !!c && Number.isFinite(c[0]) && Number.isFinite(c[1]) && !(c[0] === 0 && c[1] === 0) && Math.abs(c[0]) <= 90 && Math.abs(c[1]) <= 180;
+
+  const validTo = isValid(to) ? to : null;
+  const validFrom = isValid(from) ? from : null;
+
+  if (!validTo) {
+    if (validFrom) return `https://www.google.com/maps/search/?api=1&query=${validFrom[0]},${validFrom[1]}`;
+    return `https://www.google.com/maps/@11.0168,76.9558,15z`;
+  }
+
+  if (validFrom) {
+    return `https://www.google.com/maps/dir/?api=1&origin=${validFrom[0]},${validFrom[1]}&destination=${validTo[0]},${validTo[1]}&travelmode=two_wheeler`;
+  }
+
+  return `https://www.google.com/maps/dir/?api=1&destination=${validTo[0]},${validTo[1]}&travelmode=two_wheeler`;
 }
 
 export function etaMinutes(distanceKm: number) {

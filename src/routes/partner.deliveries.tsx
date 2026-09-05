@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { AlertTriangle, Camera, Clock3, Loader2, Phone } from "lucide-react";
+import { AlertTriangle, Camera, Clock3, Loader2, Map, Phone, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { AddressNavigation, MapPanel } from "@/components/delivery/MapPanel";
 import { StatusBadge } from "@/components/delivery/StatusBadge";
 import { EmptyState } from "@/components/delivery/AppShell";
+import { DeliveryNavigationScreen } from "@/components/delivery/DeliveryNavigationScreen";
 import { supabase } from "@/integrations/supabase/client";
 import { db } from "@/lib/db";
 import { usePartner } from "@/hooks/usePartner";
@@ -56,6 +57,7 @@ function Deliveries() {
   const loadInFlightRef = useRef(false);
   const completionInFlightRef = useRef(false);
   const refreshTimerRef = useRef<number | null>(null);
+  const [navMode, setNavMode] = useState(true); // Default to navigation view
 
   const load = useCallback(async () => {
     if (!partner || loadInFlightRef.current) return;
@@ -307,6 +309,39 @@ function Deliveries() {
   const hasVendorCoordinates =
     Number.isFinite(vendor?.latitude) && Number.isFinite(vendor?.longitude);
 
+  // Navigation statuses: show full-screen nav map for these
+  const isNavigationStatus = ["accepted", "navigating_to_vendor", "reached_vendor", "picked_up", "out_for_delivery"].includes(active?.status ?? "");
+
+  // Full-screen navigation mode
+  if (active && navMode && isNavigationStatus) {
+    return (
+      <div className="-m-4 sm:-m-6">
+        {/* Exit navigation button */}
+        <button
+          type="button"
+          onClick={() => setNavMode(false)}
+          className="absolute top-2 right-2 z-[600] grid h-9 w-9 place-items-center rounded-full bg-slate-900/80 text-white shadow-lg backdrop-blur-sm hover:bg-slate-900 active:scale-95 transition-all"
+          aria-label="Exit navigation view"
+        >
+          <X className="h-4 w-4" />
+        </button>
+        <DeliveryNavigationScreen
+          active={active}
+          order={order}
+          vendor={vendor}
+          partner={partner}
+          onAdvance={advance}
+          busy={busy}
+          otp={otp}
+          setOtp={setOtp}
+          photo={photo}
+          setPhoto={setPhoto}
+          onRequestContact={requestContact}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight text-foreground">Deliveries</h1>
@@ -317,6 +352,20 @@ function Deliveries() {
           description="Go online from the header and accept a nearby request to start a delivery."
         />
       ) : (
+        <>
+        {/* Navigation Mode Toggle */}
+        {isNavigationStatus && (
+          <Button
+            type="button"
+            variant="default"
+            className="w-full h-12 text-base font-semibold gap-2 bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/20"
+            onClick={() => setNavMode(true)}
+          >
+            <Map className="h-5 w-5" />
+            Open Live Navigation
+          </Button>
+        )}
+
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">
@@ -537,6 +586,7 @@ function Deliveries() {
             ) : null}
           </CardContent>
         </Card>
+        </>
       )}
 
       <Card>

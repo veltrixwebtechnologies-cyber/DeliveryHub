@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Navigation, MapPin, Loader2 } from "lucide-react";
 import { osmDirections } from "@/lib/delivery";
 
+import { getMapTileConfig } from "@/lib/map-provider";
+
 type Props = {
   lat: number;
   lng: number;
@@ -16,11 +18,18 @@ export function MapPanel({ lat, lng, label, from = null, height = 220 }: Props) 
   const mapRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
 
-  const valid =
-    Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+  const isValidCoord = (a: number, b: number) =>
+    Number.isFinite(a) && Number.isFinite(b) && !(a === 0 && b === 0) && Math.abs(a) <= 90 && Math.abs(b) <= 180;
+
+  const hasTarget = isValidCoord(lat, lng);
+  const hasFrom = from && isValidCoord(from[0], from[1]);
+
+  // Target location or fallback location (from or Coimbatore default)
+  const targetLat = hasTarget ? lat : hasFrom ? from![0] : 11.0168;
+  const targetLng = hasTarget ? lng : hasFrom ? from![1] : 76.9558;
 
   useEffect(() => {
-    if (!valid || !containerRef.current) return;
+    if (!containerRef.current) return;
 
     let isMounted = true;
 
@@ -37,17 +46,25 @@ export function MapPanel({ lat, lng, label, from = null, height = 220 }: Props) 
           mapRef.current = null;
         }
 
-        const center: [number, number] = [lat, lng];
+        const center: [number, number] = [targetLat, targetLng];
         const map = L.map(containerRef.current, {
           center,
           zoom: 15,
+          maxZoom: 18,
           zoomControl: false,
           attributionControl: false,
         });
 
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          maxZoom: 19,
+        const tileConfig = getMapTileConfig();
+        L.tileLayer(tileConfig.url, {
+          maxZoom: tileConfig.maxZoom,
+          subdomains: tileConfig.subdomains,
+          attribution: tileConfig.attribution,
         }).addTo(map);
+
+        setTimeout(() => {
+          map.invalidateSize();
+        }, 100);
 
         // Destination Marker Pin
         const destIcon = L.divIcon({
@@ -100,9 +117,11 @@ export function MapPanel({ lat, lng, label, from = null, height = 220 }: Props) 
         mapRef.current = null;
       }
     };
-  }, [lat, lng, from?.[0], from?.[1], valid]);
+  }, [lat, lng, from?.[0], from?.[1], hasTarget, hasFrom]);
 
-  if (!valid) {
+  const isValidLocation = hasTarget || hasFrom;
+
+  if (!isValidLocation) {
     return (
       <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
         Location coordinates are not available yet. Use the address navigation link when available.
@@ -110,7 +129,7 @@ export function MapPanel({ lat, lng, label, from = null, height = 220 }: Props) 
     );
   }
 
-  const directUrl = osmDirections(from, [lat, lng]);
+  const directUrl = osmDirections(hasFrom ? from : null, [targetLat, targetLng]);
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">

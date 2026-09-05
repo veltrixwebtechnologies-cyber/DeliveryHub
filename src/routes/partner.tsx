@@ -25,7 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { db } from "@/lib/db";
 import { usePartner } from "@/hooks/usePartner";
-import { INR, etaMinutes, PARTNER_STATUS_LABEL } from "@/lib/delivery";
+import { INR, etaMinutes, PARTNER_STATUS_LABEL, osmDirections } from "@/lib/delivery";
 import { StatusBadge } from "@/components/delivery/StatusBadge";
 import { DELIVERY_ORDER_SELECT, normalizeAssignment } from "@/lib/shared-orders";
 import {
@@ -260,17 +260,11 @@ function PartnerLayout() {
 
   const handlePositionError = useCallback(
     (error: GeolocationPositionError) => {
-      console.error("[delivery-location] browser geolocation failed", error);
-      if (error.code === 1 || error.code === 2) void markOffline("GPS is unavailable");
-      if (!locationErrorShownRef.current) {
+      console.warn("[delivery-location] browser geolocation warning", error);
+      if (error.code === 1) void markOffline("GPS permission denied");
+      if (!locationErrorShownRef.current && error.code === 1) {
         locationErrorShownRef.current = true;
-        const message =
-          error.code === 1
-            ? "Allow location access to receive delivery requests."
-            : error.code === 3
-              ? "Location request timed out. Keep GPS enabled and try again."
-              : "Unable to read your location. Keep GPS enabled and try again.";
-        toast.error(message);
+        toast.error("Allow location access to receive delivery requests.");
       }
     },
     [markOffline],
@@ -772,7 +766,7 @@ function PartnerLayout() {
               className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
               onClick={() =>
                 window.open(
-                  `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=;${zoneInfo.zoneLat},${zoneInfo.zoneLng}`,
+                  osmDirections(requestFrom, [zoneInfo.zoneLat, zoneInfo.zoneLng]),
                   "_blank",
                 )
               }
