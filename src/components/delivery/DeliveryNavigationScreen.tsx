@@ -24,7 +24,7 @@ import {
   nextFlowStep,
   INR,
   ASSIGNMENT_STATUS_LABEL,
-  googleMapsDirections,
+  osmDirections,
 } from "@/lib/delivery";
 import { isValidCoordinate } from "@/lib/geo";
 import { ChevronDown, ChevronUp, MapPin, Navigation, X } from "lucide-react";
@@ -162,17 +162,21 @@ export function DeliveryNavigationScreen({
         <div className="flex items-center gap-1.5 text-xs">
           {nav.destination && (
             <a
-              href={googleMapsDirections(
+              href={osmDirections(
                 nav.displayPos ? [nav.displayPos.lat, nav.displayPos.lng] : null,
                 [nav.destination.lat, nav.destination.lng],
               )}
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-1 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 text-xs font-bold shadow-md transition-transform active:scale-95 shrink-0"
-              title="Open Turn-by-Turn GPS in Google Maps App"
+              title={
+                nav.phase === "to_vendor"
+                  ? "Navigate to Shop on OpenStreetMap"
+                  : "Navigate to Customer on OpenStreetMap"
+              }
             >
               <Navigation className="h-3.5 w-3.5" />
-              <span>Google Maps 🗺️</span>
+              <span>OpenStreetMap 🗺️</span>
             </a>
           )}
           {nav.route && (

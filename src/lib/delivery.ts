@@ -153,10 +153,10 @@ export function osmDirections(
   }
 
   if (!validFrom) {
-    return `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${validTo[0]},${validTo[1]}`;
+    return `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=%3B${validTo[0]}%2C${validTo[1]}`;
   }
 
-  return `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${validFrom[0]},${validFrom[1]};${validTo[0]},${validTo[1]}`;
+  return `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${validFrom[0]}%2C${validFrom[1]}%3B${validTo[0]}%2C${validTo[1]}`;
 }
 
 export function googleMapsDirections(

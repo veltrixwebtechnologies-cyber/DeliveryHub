@@ -21,7 +21,7 @@ import { EmptyState } from "@/components/delivery/AppShell";
 import { StatusBadge } from "@/components/delivery/StatusBadge";
 import { db } from "@/lib/db";
 import { usePartner } from "@/hooks/usePartner";
-import { ACTIVE_ASSIGNMENT_STATUSES, googleMapsDirections, INR, pct } from "@/lib/delivery";
+import { ACTIVE_ASSIGNMENT_STATUSES, osmDirections, INR, pct } from "@/lib/delivery";
 import { DELIVERY_ORDER_SELECT, normalizeAssignment } from "@/lib/shared-orders";
 import { SafetyActions } from "@/components/delivery/SafetyActions";
 import { MapPanel } from "@/components/delivery/MapPanel";
@@ -517,7 +517,7 @@ function PartnerDashboard() {
                     : Number(a.orders?.delivery_longitude);
                   const targetValid = isValidCoordinate(targetLat, targetLng);
                   const navUrl = targetValid
-                    ? googleMapsDirections(
+                    ? osmDirections(
                         isValidCoordinate(
                           Number(partner.current_latitude),
                           Number(partner.current_longitude),

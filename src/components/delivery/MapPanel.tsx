@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Navigation, MapPin, Loader2 } from "lucide-react";
-import { googleMapsDirections, osmDirections } from "@/lib/delivery";
+import { osmDirections } from "@/lib/delivery";
 import { isValidCoordinate } from "@/lib/geo";
 
 import { getMapTileConfig } from "@/lib/map-provider";
@@ -152,7 +152,7 @@ export function MapPanel({
     );
   }
 
-  const gmapsUrl = hasTarget ? googleMapsDirections(from, [lat as number, lng as number]) : null;
+  const osmUrl = hasTarget ? osmDirections(from, [lat as number, lng as number]) : null;
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
@@ -167,16 +167,16 @@ export function MapPanel({
             Approximate location
           </div>
         )}
-        {gmapsUrl && (
+        {osmUrl && (
           <a
-            href={gmapsUrl}
+            href={osmUrl}
             target="_blank"
             rel="noreferrer"
             className="absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-full bg-emerald-600/90 hover:bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-sm transition-transform active:scale-95"
-            title="Open Turn-by-Turn GPS Navigation in Google Maps"
+            title="Open Turn-by-Turn GPS Navigation in OpenStreetMap"
           >
             <Navigation className="h-3.5 w-3.5" />
-            <span>Google Maps GPS 🗺️</span>
+            <span>OpenStreetMap 🗺️</span>
           </a>
         )}
       </div>
@@ -185,14 +185,14 @@ export function MapPanel({
           <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
           {label}
         </span>
-        {gmapsUrl ? (
+        {osmUrl ? (
           <Button
             asChild
             size="sm"
             className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-sm shrink-0"
           >
-            <a href={gmapsUrl} target="_blank" rel="noreferrer">
-              <Navigation className="mr-1.5 h-3.5 w-3.5" /> Navigate in Google Maps
+            <a href={osmUrl} target="_blank" rel="noreferrer">
+              <Navigation className="mr-1.5 h-3.5 w-3.5" /> Navigate on OpenStreetMap
             </a>
           </Button>
         ) : (

@@ -14,7 +14,7 @@ import { formatDistanceShort, formatDurationShort, getManeuverIcon } from "@/lib
 import type { TurnStep, RouteResult } from "@/lib/delivery-routing";
 import { Navigation, Locate, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { googleMapsDirections } from "@/lib/delivery";
+import { osmDirections } from "@/lib/delivery";
 import type { NavigationPhase, ArrivalZone } from "@/hooks/useDriverNavigation";
 
 interface NavigationBarProps {
@@ -77,7 +77,7 @@ export function NavigationBar({
         : null;
 
   const externalNavUrl = destination
-    ? googleMapsDirections(driverPos ? [driverPos.lat, driverPos.lng] : null, [
+    ? osmDirections(driverPos ? [driverPos.lat, driverPos.lng] : null, [
         destination.lat,
         destination.lng,
       ])
@@ -156,10 +156,10 @@ export function NavigationBar({
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-xs font-bold text-white shadow-lg active:scale-95 transition-all shrink-0"
-              title="Navigate in Google Maps App"
+              title="Navigate in OpenStreetMap App"
             >
               <Navigation className="h-3.5 w-3.5" />
-              <span>Google Maps 🗺️</span>
+              <span>OpenStreetMap 🗺️</span>
             </a>
           )}
         </div>
