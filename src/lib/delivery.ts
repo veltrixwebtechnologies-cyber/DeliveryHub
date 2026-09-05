@@ -142,7 +142,11 @@ export function osmDirections(
     Math.abs(c[1]) <= 180;
 
   const validTo = isValid(to) ? to : null;
-  const validFrom = isValid(from) ? from : null;
+  const validFrom = isValid(from)
+    ? from
+    : validTo
+      ? ([11.0028, 77.0865] as [number, number])
+      : null;
 
   if (!validTo && !validFrom) {
     return `https://www.openstreetmap.org/`;
@@ -152,11 +156,7 @@ export function osmDirections(
     return `https://www.openstreetmap.org/?mlat=${validFrom![0]}&mlon=${validFrom![1]}#map=16/${validFrom![0]}/${validFrom![1]}`;
   }
 
-  if (!validFrom) {
-    return `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=%3B${validTo[0]}%2C${validTo[1]}`;
-  }
-
-  return `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${validFrom[0]}%2C${validFrom[1]}%3B${validTo[0]}%2C${validTo[1]}`;
+  return `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${validFrom![0]}%2C${validFrom![1]}%3B${validTo[0]}%2C${validTo[1]}`;
 }
 
 export function googleMapsDirections(
