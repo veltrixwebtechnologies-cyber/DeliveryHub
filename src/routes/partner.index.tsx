@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, Bike, Clock3, Gift, MapPin, Package, Star, TrendingUp, Wallet } from "lucide-react";
+import {
+  ArrowRight,
+  Bike,
+  Clock3,
+  Gift,
+  LocateFixed,
+  MapPin,
+  Package,
+  Star,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -12,6 +23,7 @@ import { usePartner } from "@/hooks/usePartner";
 import { ACTIVE_ASSIGNMENT_STATUSES, INR, pct } from "@/lib/delivery";
 import { DELIVERY_ORDER_SELECT, normalizeAssignment } from "@/lib/shared-orders";
 import { SafetyActions } from "@/components/delivery/SafetyActions";
+import { MapPanel } from "@/components/delivery/MapPanel";
 
 export const Route = createFileRoute("/partner/")({
   component: PartnerDashboard,
@@ -22,6 +34,84 @@ function todayStart() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d.toISOString();
+}
+
+function isValidCoordinate(lat: number, lng: number) {
+  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0);
+}
+
+function LiveLocationCard({ partner }: { partner: NonNullable<ReturnType<typeof usePartner>["partner"]> }) {
+  const savedLocation = {
+    lat: Number(partner.current_latitude),
+    lng: Number(partner.current_longitude),
+  };
+  const [location, setLocation] = useState(
+    isValidCoordinate(savedLocation.lat, savedLocation.lng) ? savedLocation : null,
+  );
+  const [status, setStatus] = useState("Waiting for GPS location…");
+
+  useEffect(() => {
+    if (isValidCoordinate(savedLocation.lat, savedLocation.lng)) {
+      setLocation(savedLocation);
+      setStatus("Showing your last known location");
+    }
+
+    if (partner.availability === "offline" || !("geolocation" in navigator)) return;
+
+    const onPosition = (position: GeolocationPosition) => {
+      const next = { lat: position.coords.latitude, lng: position.coords.longitude };
+      if (isValidCoordinate(next.lat, next.lng)) {
+        setLocation(next);
+        setStatus("Live location updating");
+      }
+    };
+    const onError = () => setStatus("GPS unavailable — showing your last known location");
+
+    navigator.geolocation.getCurrentPosition(onPosition, onError, {
+      enableHighAccuracy: false,
+      maximumAge: 30_000,
+      timeout: 15_000,
+    });
+    const watchId = navigator.geolocation.watchPosition(onPosition, onError, {
+      enableHighAccuracy: false,
+      maximumAge: 30_000,
+      timeout: 30_000,
+    });
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [partner.id, partner.availability, partner.current_latitude, partner.current_longitude]);
+
+  return (
+    <Card className="overflow-hidden border-border/80 shadow-soft">
+      <CardHeader className="flex-row items-start justify-between space-y-0 border-b border-border/70 bg-secondary/30">
+        <div>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <LocateFixed className="h-4 w-4 text-primary" />
+            Your live location
+          </CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">{status}</p>
+        </div>
+        <span className="flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+          {partner.availability === "online" ? "Live" : "Offline"}
+        </span>
+      </CardHeader>
+      <CardContent className="p-5">
+        {location ? (
+          <MapPanel
+            lat={location.lat}
+            lng={location.lng}
+            label="Your current location"
+            height={280}
+          />
+        ) : (
+          <div className="flex min-h-[280px] items-center justify-center rounded-xl border border-dashed border-border bg-secondary/20 p-6 text-center text-sm text-muted-foreground">
+            Allow location access while online to see your live position here.
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 function PartnerDashboard() {
@@ -189,6 +279,8 @@ function PartnerDashboard() {
           icon={<Star className="h-4 w-4" />}
         />
       </div>
+
+      <LiveLocationCard partner={partner} />
 
       <div className="grid gap-6 xl:grid-cols-[1.4fr_0.9fr]">
         <Card className="overflow-hidden border-border/80 shadow-soft">
