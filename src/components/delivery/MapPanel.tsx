@@ -11,9 +11,10 @@ type Props = {
   label: string;
   from?: [number, number] | null;
   height?: number;
+  markerType?: "destination" | "rider";
 };
 
-export function MapPanel({ lat, lng, label, from = null, height = 220 }: Props) {
+export function MapPanel({ lat, lng, label, from = null, height = 220, markerType = "destination" }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
@@ -69,8 +70,8 @@ export function MapPanel({ lat, lng, label, from = null, height = 220 }: Props) 
         // Destination Marker Pin
         const destIcon = L.divIcon({
           className: "custom-dest-pin",
-          html: `<div style="background-color: #8b5cf6; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);">
-            <div style="width: 8px; height: 8px; background-color: white; border-radius: 50%;"></div>
+          html: `<div style="background-color: ${markerType === "rider" ? "#10b981" : "#8b5cf6"}; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);">
+            ${markerType === "rider" ? '<span style="font-size: 13px">🛵</span>' : '<div style="width: 8px; height: 8px; background-color: white; border-radius: 50%;"></div>'}
           </div>`,
           iconSize: [28, 28],
           iconAnchor: [14, 14],
@@ -117,7 +118,7 @@ export function MapPanel({ lat, lng, label, from = null, height = 220 }: Props) 
         mapRef.current = null;
       }
     };
-  }, [lat, lng, from?.[0], from?.[1], hasTarget, hasFrom]);
+  }, [lat, lng, from?.[0], from?.[1], hasTarget, hasFrom, markerType]);
 
   const isValidLocation = hasTarget || hasFrom;
 

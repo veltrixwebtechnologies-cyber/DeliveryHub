@@ -24,6 +24,7 @@ import { ACTIVE_ASSIGNMENT_STATUSES, INR, pct } from "@/lib/delivery";
 import { DELIVERY_ORDER_SELECT, normalizeAssignment } from "@/lib/shared-orders";
 import { SafetyActions } from "@/components/delivery/SafetyActions";
 import { MapPanel } from "@/components/delivery/MapPanel";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/partner/")({
   component: PartnerDashboard,
@@ -81,6 +82,28 @@ function LiveLocationCard({ partner }: { partner: NonNullable<ReturnType<typeof 
     return () => navigator.geolocation.clearWatch(watchId);
   }, [partner.id, partner.availability, partner.current_latitude, partner.current_longitude]);
 
+  useEffect(() => {
+    const channel = supabase
+      .channel(`partner-live-location-${partner.id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "delivery_partners", filter: `id=eq.${partner.id}` },
+        (payload) => {
+          const nextLat = Number((payload.new as { current_latitude?: number }).current_latitude);
+          const nextLng = Number((payload.new as { current_longitude?: number }).current_longitude);
+          if (isValidCoordinate(nextLat, nextLng)) {
+            setLocation({ lat: nextLat, lng: nextLng });
+            setStatus("Live location updating");
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [partner.id]);
+
   return (
     <Card className="overflow-hidden border-border/80 shadow-soft">
       <CardHeader className="flex-row items-start justify-between space-y-0 border-b border-border/70 bg-secondary/30">
@@ -103,6 +126,7 @@ function LiveLocationCard({ partner }: { partner: NonNullable<ReturnType<typeof 
             lng={location.lng}
             label="Your current location"
             height={280}
+            markerType="rider"
           />
         ) : (
           <div className="flex min-h-[280px] items-center justify-center rounded-xl border border-dashed border-border bg-secondary/20 p-6 text-center text-sm text-muted-foreground">
