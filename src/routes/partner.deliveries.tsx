@@ -64,6 +64,7 @@ function Deliveries() {
   const [exceptionReason, setExceptionReason] = useState("customer_unavailable");
   const [exceptionNotes, setExceptionNotes] = useState("");
   const [exceptionBusy, setExceptionBusy] = useState(false);
+  const [vendorLiveLocation, setVendorLiveLocation] = useState<{ lat: number; lng: number } | null>(null);
   const loadInFlightRef = useRef(false);
   const completionInFlightRef = useRef(false);
   const refreshTimerRef = useRef<number | null>(null);
@@ -147,6 +148,56 @@ function Deliveries() {
       supabase.removeChannel(ch);
     };
   }, [partner?.id, load]);
+
+  // Real-time subscription to vendor live location for active order
+  useEffect(() => {
+    const orderId = active?.order_id ?? active?.orders?.id;
+    if (!orderId) {
+      setVendorLiveLocation(null);
+      return;
+    }
+
+    // Initial fetch of active vendor live location
+    (async () => {
+      const { data } = await db
+        .from("vendor_order_live_locations")
+        .select("latitude, longitude, is_active")
+        .eq("order_id", orderId)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (data && data.is_active && data.latitude && data.longitude) {
+        setVendorLiveLocation({ lat: Number(data.latitude), lng: Number(data.longitude) });
+      } else {
+        setVendorLiveLocation(null);
+      }
+    })();
+
+    const liveChannel = supabase
+      .channel(`vendor-live-loc-${orderId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "vendor_order_live_locations",
+          filter: `order_id=eq.${orderId}`,
+        },
+        (payload: any) => {
+          const row = payload.new;
+          if (row && row.is_active && row.latitude && row.longitude) {
+            setVendorLiveLocation({ lat: Number(row.latitude), lng: Number(row.longitude) });
+          } else {
+            setVendorLiveLocation(null);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(liveChannel);
+    };
+  }, [active?.order_id, active?.orders?.id]);
 
   useEffect(() => {
     if (!contactWaitUntil) {
@@ -349,6 +400,7 @@ function Deliveries() {
           order={order}
           vendor={vendor}
           partner={partner}
+          vendorLiveLocation={vendorLiveLocation}
           onAdvance={advance}
           busy={busy}
           otp={otp}

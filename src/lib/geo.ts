@@ -18,7 +18,7 @@ export interface GPSReading {
 export type GpsStatus = "unavailable" | "acquiring" | "active" | "stale" | "inaccurate" | "error";
 
 export const GPS_GOOD_ACCURACY_M = 100;
-export const GPS_ACCEPTABLE_ACCURACY_M = 500;
+export const GPS_ACCEPTABLE_ACCURACY_M = 10_000;
 export const GPS_STALE_THRESHOLD_MS = 30_000;
 
 export function isFiniteNumber(value: unknown): value is number {

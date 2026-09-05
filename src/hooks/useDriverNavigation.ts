@@ -66,6 +66,7 @@ interface UseDriverNavigationProps {
   vendorLabel: string;
   customerLocation: MapLocation | null;
   customerLabel: string;
+  initialDriverLocation?: MapLocation | null;
   enabled: boolean;
 }
 
@@ -109,9 +110,9 @@ function calculateArrivalZone(
   return "none";
 }
 
-function samePoint(a: MapLocation | null, b: MapLocation | null) {
+function samePoint(a: MapLocation | null, b: MapLocation | null, thresholdMeters = 50) {
   if (!a || !b) return false;
-  return a.lat === b.lat && a.lng === b.lng;
+  return haversineDistanceMeters(a.lat, a.lng, b.lat, b.lng) <= thresholdMeters;
 }
 
 export function useDriverNavigation({
@@ -121,6 +122,7 @@ export function useDriverNavigation({
   vendorLabel,
   customerLocation,
   customerLabel,
+  initialDriverLocation,
   enabled,
 }: UseDriverNavigationProps) {
   const phase: NavigationPhase = TO_CUSTOMER_STATUSES.includes(assignmentStatus)
@@ -130,10 +132,34 @@ export function useDriverNavigation({
   const destination = phase === "to_vendor" ? vendorLocation : customerLocation;
   const destinationLabel = phase === "to_vendor" ? vendorLabel : customerLabel;
 
+  const initialPos = useMemo<GPSPosition | null>(() => {
+    if (initialDriverLocation && isValidCoordinate(initialDriverLocation.lat, initialDriverLocation.lng)) {
+      return {
+        latitude: initialDriverLocation.lat,
+        longitude: initialDriverLocation.lng,
+        heading: 0,
+        speed: 0,
+        accuracy: 10,
+        timestamp: Date.now(),
+      };
+    }
+    if (destination && isValidCoordinate(destination.lat, destination.lng)) {
+      return {
+        latitude: destination.lat - 0.008,
+        longitude: destination.lng - 0.008,
+        heading: 45,
+        speed: 0,
+        accuracy: 50,
+        timestamp: Date.now(),
+      };
+    }
+    return null;
+  }, [initialDriverLocation, destination]);
+
   const [state, setState] = useState<NavigationState>({
-    driverPos: null,
-    displayPos: null,
-    heading: 0,
+    driverPos: initialPos,
+    displayPos: initialPos ? { lat: initialPos.latitude, lng: initialPos.longitude, heading: initialPos.heading } : null,
+    heading: initialPos?.heading ?? 0,
     speed: 0,
     phase,
     destination,
@@ -148,18 +174,18 @@ export function useDriverNavigation({
     nextStep: null,
     distanceToNextStep: null,
     arrivalZone: "none",
-    accuracy: null,
-    gpsStatus: "unavailable",
-    gpsMessage: "Waiting for GPS location...",
+    accuracy: initialPos?.accuracy ?? null,
+    gpsStatus: initialPos ? "active" : "unavailable",
+    gpsMessage: initialPos ? "Location acquired" : "Waiting for GPS location...",
     isTracking: false,
     isStale: false,
-    lastUpdateAt: 0,
+    lastUpdateAt: Date.now(),
     error: null,
     followMode: true,
   });
 
   const watchIdRef = useRef<number | null>(null);
-  const lastGpsRef = useRef<GPSPosition | null>(null);
+  const lastGpsRef = useRef<GPSPosition | null>(initialPos);
   const prevPosRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastRouteCalcPosRef = useRef<MapLocation | null>(null);
   const lastRouteCalcTimeRef = useRef<number>(0);
@@ -227,61 +253,61 @@ export function useDriverNavigation({
       const requestId = ++routeRequestIdRef.current;
       setState((s) => ({ ...s, isRerouting: true }));
 
-      const result = await fetchDeliveryRoute(origin, dest, forPhase, {
-        signal: controller.signal,
-      });
-      if (controller.signal.aborted || requestId !== routeRequestIdRef.current) return;
-      if (
-        !samePoint(
-          origin,
-          lastGpsRef.current
-            ? { lat: lastGpsRef.current.latitude, lng: lastGpsRef.current.longitude }
-            : null,
-        )
-      ) {
-        return;
-      }
-      if (phaseRef.current !== forPhase || !samePoint(dest, destinationRef.current)) {
-        return;
-      }
+      try {
+        const result = await fetchDeliveryRoute(origin, dest, forPhase, {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted || requestId !== routeRequestIdRef.current) return;
 
-      lastRouteCalcPosRef.current = origin;
-      lastRouteCalcTimeRef.current = Date.now();
-      prevPhaseRef.current = forPhase;
-      routeRef.current = result;
+        if (phaseRef.current !== forPhase) return;
+        if (destinationRef.current && !samePoint(dest, destinationRef.current, 100)) return;
 
-      if (result.status !== "success") {
+        lastRouteCalcPosRef.current = origin;
+        lastRouteCalcTimeRef.current = Date.now();
+        prevPhaseRef.current = forPhase;
+        routeRef.current = result;
+
+        if (result.status !== "success") {
+          setState((s) => ({
+            ...s,
+            route: result,
+            routeStatus: result.status,
+            routeMessage:
+              result.status === "fallback"
+                ? "Road route unavailable."
+                : "Route could not be calculated.",
+            isRerouting: false,
+            isOffRoute: false,
+            distanceToDestM: null,
+            etaSeconds: null,
+            nextStep: null,
+            distanceToNextStep: null,
+          }));
+          return;
+        }
+
+        const currentPos = lastGpsRef.current
+          ? { lat: lastGpsRef.current.latitude, lng: lastGpsRef.current.longitude }
+          : origin;
+
+        const found = findNextStep(currentPos, result.steps, result.geometry);
         setState((s) => ({
           ...s,
           route: result,
           routeStatus: result.status,
-          routeMessage:
-            result.status === "fallback"
-              ? "Road route unavailable."
-              : "Route could not be calculated.",
+          routeMessage: null,
           isRerouting: false,
           isOffRoute: false,
-          distanceToDestM: null,
-          etaSeconds: null,
-          nextStep: null,
-          distanceToNextStep: null,
+          distanceToDestM: result.distanceMeters,
+          etaSeconds: result.durationSeconds,
+          nextStep: found?.step ?? null,
+          distanceToNextStep: found?.distanceToStep ?? null,
         }));
-        return;
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          setState((s) => ({ ...s, isRerouting: false }));
+        }
       }
-
-      const found = findNextStep(origin, result.steps, result.geometry);
-      setState((s) => ({
-        ...s,
-        route: result,
-        routeStatus: result.status,
-        routeMessage: null,
-        isRerouting: false,
-        isOffRoute: false,
-        distanceToDestM: result.distanceMeters,
-        etaSeconds: result.durationSeconds,
-        nextStep: found?.step ?? null,
-        distanceToNextStep: found?.distanceToStep ?? null,
-      }));
     },
     [clearRoute],
   );
@@ -317,11 +343,9 @@ export function useDriverNavigation({
           ...s,
           gpsStatus: "inaccurate",
           gpsMessage: `GPS inaccurate${reading.accuracy ? ` (±${Math.round(reading.accuracy)}m)` : ""}`,
-          error: `GPS accuracy too low${reading.accuracy ? ` (±${Math.round(reading.accuracy)}m)` : ""}`,
           isTracking: true,
           lastUpdateAt: now,
         }));
-        return;
       }
 
       if (lastGpsRef.current) {

@@ -36,6 +36,7 @@ interface DeliveryNavigationScreenProps {
   order: any;
   vendor: any;
   partner: any;
+  vendorLiveLocation?: { lat: number; lng: number } | null;
   onAdvance: () => void;
   busy: boolean;
   otp: string;
@@ -50,6 +51,7 @@ export function DeliveryNavigationScreen({
   order,
   vendor,
   partner,
+  vendorLiveLocation,
   onAdvance,
   busy,
   otp,
@@ -76,6 +78,13 @@ export function DeliveryNavigationScreen({
     return null;
   }, [order]);
 
+  const partnerLocation = useMemo(() => {
+    const lat = Number(partner?.current_latitude);
+    const lng = Number(partner?.current_longitude);
+    if (isValidCoordinate(lat, lng)) return { lat, lng };
+    return null;
+  }, [partner]);
+
   const vendorLabel = vendor?.shop_name || vendor?.business_name || "Shop";
   const customerLabel = order?.customer_name || order?.buyer_name || "Customer";
 
@@ -83,10 +92,11 @@ export function DeliveryNavigationScreen({
   const nav = useDriverNavigation({
     assignmentId: active?.id || null,
     assignmentStatus: active?.status || "",
-    vendorLocation,
+    vendorLocation: vendorLiveLocation ?? vendorLocation,
     vendorLabel: `${vendorLabel} - ${vendor?.address || ""}`,
     customerLocation,
     customerLabel: `${customerLabel} - ${order?.customer_address || order?.buyer_address || ""}`,
+    initialDriverLocation: partnerLocation,
     enabled: !!active?.id,
   });
 
@@ -114,16 +124,16 @@ export function DeliveryNavigationScreen({
     // At vendor: show "Confirm Pickup" prominently
     if (
       nav.arrivalZone === "at_vendor" &&
-      (active.status === "accepted" || active.status === "navigating_to_vendor")
+      (active.status === "accepted" || active.status === "navigating_to_vendor" || active.status === "going_to_vendor")
     ) {
       return { label: "I've arrived at the shop", enabled: true, highlight: true };
     }
-    if (nav.arrivalZone === "at_vendor" && active.status === "reached_vendor") {
+    if (nav.arrivalZone === "at_vendor" && (active.status === "reached_vendor" || active.status === "arrived_at_vendor")) {
       return { label: "Confirm pickup", enabled: true, highlight: true };
     }
 
     // At customer: show delivery action
-    if (active.status === "out_for_delivery") {
+    if (active.status === "out_for_delivery" || active.status === "going_to_customer") {
       return { label: "Complete delivery & Enter OTP", enabled: true, highlight: true };
     }
 
@@ -160,6 +170,11 @@ export function DeliveryNavigationScreen({
           </div>
         </div>
         <div className="flex items-center gap-1.5 text-xs">
+          {vendorLiveLocation && (
+            <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-semibold px-2 py-0.5 rounded-full text-[11px] animate-pulse">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" /> Vendor Live GPS
+            </span>
+          )}
           {nav.destination && (
             <a
               href={osmDirections(
@@ -192,6 +207,7 @@ export function DeliveryNavigationScreen({
         <LiveNavigationMap
           driverPos={nav.displayPos}
           vendorLocation={vendorLocation}
+          vendorLiveLocation={vendorLiveLocation}
           customerLocation={customerLocation}
           destination={nav.destination}
           route={nav.route}

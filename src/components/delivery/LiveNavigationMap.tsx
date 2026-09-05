@@ -20,6 +20,7 @@ import { getMapTileConfig } from "@/lib/map-provider";
 interface LiveNavMapProps {
   driverPos: { lat: number; lng: number; heading: number } | null;
   vendorLocation: MapLocation | null;
+  vendorLiveLocation?: MapLocation | null;
   customerLocation: MapLocation | null;
   destination: MapLocation | null;
   route: RouteResult | null;
@@ -94,6 +95,7 @@ const DEFAULT_VISUAL_CENTER: [number, number] = [11.02, 76.99];
 export function LiveNavigationMap({
   driverPos,
   vendorLocation,
+  vendorLiveLocation,
   customerLocation,
   destination,
   route,
@@ -285,7 +287,7 @@ export function LiveNavigationMap({
       }
     }
 
-    // Vendor marker
+    // Vendor verified location marker (Permanent shop location)
     if (vendorLocation) {
       const vendorColor = phase === "to_vendor" ? "#8B5CF6" : "#6B7280";
       upsertMarker(
@@ -295,6 +297,19 @@ export function LiveNavigationMap({
         [36, 48],
         [18, 48],
       );
+    }
+
+    // Vendor Live Location marker (Temporary live guidance)
+    if (vendorLiveLocation && isValidLocation(vendorLiveLocation.lat, vendorLiveLocation.lng)) {
+      upsertMarker(
+        "vendor_live",
+        vendorLiveLocation,
+        destinationPinSvg("#10B981", "📍"),
+        [36, 48],
+        [18, 48],
+      );
+    } else {
+      upsertMarker("vendor_live", null, "", [0, 0]);
     }
 
     // Customer marker
@@ -311,6 +326,7 @@ export function LiveNavigationMap({
   }, [
     driverPos,
     vendorLocation,
+    vendorLiveLocation,
     customerLocation,
     phase,
     isOffRoute,
