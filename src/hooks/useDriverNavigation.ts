@@ -5,7 +5,7 @@
  * automatic phase transitions, arrival detection, smooth position updates.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   GPS_STALE_THRESHOLD_MS,
   GPS_ACCEPTABLE_ACCURACY_M,
