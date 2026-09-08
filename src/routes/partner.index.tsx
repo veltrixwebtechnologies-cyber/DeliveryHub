@@ -124,21 +124,28 @@ function LiveLocationCard({
       setRequesting(false);
     };
     const onError = (error: GeolocationPositionError) => {
-      setRequesting(false);
-      setStatus(
-        error.code === error.PERMISSION_DENIED
-          ? "Permission denied — allow Location for 127.0.0.1 in the address bar"
-          : error.code === error.POSITION_UNAVAILABLE
-            ? "Position unavailable — enable device Location/GPS and Wi‑Fi"
-            : error.code === error.TIMEOUT
-              ? "Location timed out — try again near a window"
-              : `Location failed (error ${error.code})`,
+      // Retry with low accuracy (WiFi/IP geolocation) if high accuracy fails or times out
+      navigator.geolocation.getCurrentPosition(
+        onPosition,
+        (finalErr) => {
+          setRequesting(false);
+          setStatus(
+            finalErr.code === finalErr.PERMISSION_DENIED
+              ? "Permission denied — allow Location access in browser site settings"
+              : finalErr.code === finalErr.POSITION_UNAVAILABLE
+                ? "Position unavailable — enable device Location/GPS"
+                : finalErr.code === finalErr.TIMEOUT
+                  ? "Location timed out — please try again"
+                  : `Location failed (error ${finalErr.code})`,
+          );
+        },
+        { enableHighAccuracy: false, maximumAge: 300_000, timeout: 10_000 },
       );
     };
     navigator.geolocation.getCurrentPosition(onPosition, onError, {
       enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 10_000,
+      maximumAge: 30_000,
+      timeout: 6_000,
     });
   };
 

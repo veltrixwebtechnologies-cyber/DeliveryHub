@@ -133,7 +133,10 @@ export function useDriverNavigation({
   const destinationLabel = phase === "to_vendor" ? vendorLabel : customerLabel;
 
   const initialPos = useMemo<GPSPosition | null>(() => {
-    if (initialDriverLocation && isValidCoordinate(initialDriverLocation.lat, initialDriverLocation.lng)) {
+    if (
+      initialDriverLocation &&
+      isValidCoordinate(initialDriverLocation.lat, initialDriverLocation.lng)
+    ) {
       return {
         latitude: initialDriverLocation.lat,
         longitude: initialDriverLocation.lng,
@@ -158,7 +161,9 @@ export function useDriverNavigation({
 
   const [state, setState] = useState<NavigationState>({
     driverPos: initialPos,
-    displayPos: initialPos ? { lat: initialPos.latitude, lng: initialPos.longitude, heading: initialPos.heading } : null,
+    displayPos: initialPos
+      ? { lat: initialPos.latitude, lng: initialPos.longitude, heading: initialPos.heading ?? 0 }
+      : null,
     heading: initialPos?.heading ?? 0,
     speed: 0,
     phase,
@@ -563,9 +568,9 @@ export function useDriverNavigation({
         }));
       },
       {
-        enableHighAccuracy: true,
-        timeout: 15_000,
-        maximumAge: 5_000,
+        enableHighAccuracy: false,
+        timeout: 30_000,
+        maximumAge: 10_000,
       },
     );
 

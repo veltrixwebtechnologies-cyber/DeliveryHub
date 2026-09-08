@@ -45,7 +45,12 @@ export function MapPanel({
 
         // Clean up previous map if exists
         if (mapRef.current) {
-          mapRef.current.remove();
+          try {
+            mapRef.current.off();
+            mapRef.current.remove();
+          } catch {
+            // Ignore error when removing previous map instance
+          }
           mapRef.current = null;
         }
 
@@ -71,7 +76,13 @@ export function MapPanel({
         }).addTo(map);
 
         setTimeout(() => {
-          map.invalidateSize();
+          if (isMounted && mapRef.current) {
+            try {
+              map.invalidateSize();
+            } catch {
+              // Ignore error on invalidateSize if map is unmounting
+            }
+          }
         }, 100);
 
         // Destination Marker Pin
@@ -138,7 +149,12 @@ export function MapPanel({
     return () => {
       isMounted = false;
       if (mapRef.current) {
-        mapRef.current.remove();
+        try {
+          mapRef.current.off();
+          mapRef.current.remove();
+        } catch {
+          // Ignore error during unmount cleanup
+        }
         mapRef.current = null;
       }
     };

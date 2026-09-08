@@ -64,7 +64,9 @@ function Deliveries() {
   const [exceptionReason, setExceptionReason] = useState("customer_unavailable");
   const [exceptionNotes, setExceptionNotes] = useState("");
   const [exceptionBusy, setExceptionBusy] = useState(false);
-  const [vendorLiveLocation, setVendorLiveLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [vendorLiveLocation, setVendorLiveLocation] = useState<{ lat: number; lng: number } | null>(
+    null,
+  );
   const loadInFlightRef = useRef(false);
   const completionInFlightRef = useRef(false);
   const refreshTimerRef = useRef<number | null>(null);
@@ -190,7 +192,7 @@ function Deliveries() {
           } else {
             setVendorLiveLocation(null);
           }
-        }
+        },
       )
       .subscribe();
 

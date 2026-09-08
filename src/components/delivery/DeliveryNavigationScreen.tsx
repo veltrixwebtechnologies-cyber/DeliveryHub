@@ -124,11 +124,16 @@ export function DeliveryNavigationScreen({
     // At vendor: show "Confirm Pickup" prominently
     if (
       nav.arrivalZone === "at_vendor" &&
-      (active.status === "accepted" || active.status === "navigating_to_vendor" || active.status === "going_to_vendor")
+      (active.status === "accepted" ||
+        active.status === "navigating_to_vendor" ||
+        active.status === "going_to_vendor")
     ) {
       return { label: "I've arrived at the shop", enabled: true, highlight: true };
     }
-    if (nav.arrivalZone === "at_vendor" && (active.status === "reached_vendor" || active.status === "arrived_at_vendor")) {
+    if (
+      nav.arrivalZone === "at_vendor" &&
+      (active.status === "reached_vendor" || active.status === "arrived_at_vendor")
+    ) {
       return { label: "Confirm pickup", enabled: true, highlight: true };
     }
 

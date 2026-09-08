@@ -20,7 +20,7 @@ import { getMapTileConfig } from "@/lib/map-provider";
 interface LiveNavMapProps {
   driverPos: { lat: number; lng: number; heading: number } | null;
   vendorLocation: MapLocation | null;
-  vendorLiveLocation?: MapLocation | null;
+  vendorLiveLocation?: MapLocation | null | undefined;
   customerLocation: MapLocation | null;
   destination: MapLocation | null;
   route: RouteResult | null;
@@ -115,6 +115,7 @@ export function LiveNavigationMap({
   const markersRef = useRef<Record<string, any>>({});
   const polylineRef = useRef<any>(null);
   const pulseRef = useRef<any>(null);
+  const mountedRef = useRef(true);
   const [isUserPanning, setIsUserPanning] = useState(false);
   const [mapReady, setMapReady] = useState(false);
 
@@ -186,6 +187,7 @@ export function LiveNavigationMap({
 
     return () => {
       cancelled = true;
+      mountedRef.current = false;
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -240,6 +242,7 @@ export function LiveNavigationMap({
           const duration = 500;
 
           const animate = (now: number) => {
+            if (!mountedRef.current || !mapRef.current) return;
             const t = Math.min(1, (now - startTime) / duration);
             const ease = 1 - Math.pow(1 - t, 3); // easeOutCubic
             marker.setLatLng([

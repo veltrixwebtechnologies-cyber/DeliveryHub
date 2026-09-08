@@ -135,6 +135,8 @@ function PartnerLayout() {
   const offlineWriteRef = useRef(false);
   const shownNotificationIdsRef = useRef(new Set<string>());
   const shownNotificationKeysRef = useRef(new Set<string>());
+  const handledAssignmentIdsRef = useRef(new Set<string>());
+  const lastOfferClaimTimeRef = useRef<number>(0);
 
   // Zone geofence check
   useEffect(() => {
@@ -434,6 +436,23 @@ function PartnerLayout() {
     };
   }, [partner?.availability, partner?.id, markOffline]);
 
+  // Offer claim interval - decoupled from Realtime changes to prevent feedback loops
+  useEffect(() => {
+    if (!partner || partner.availability !== "online" || partner.status !== "approved") return;
+    const interval = window.setInterval(async () => {
+      const nowMs = Date.now();
+      if (nowMs - lastOfferClaimTimeRef.current > 15_000) {
+        lastOfferClaimTimeRef.current = nowMs;
+        try {
+          await claimNextDeliveryOffer();
+        } catch {
+          // ignore claim errors silently
+        }
+      }
+    }, 15_000);
+    return () => window.clearInterval(interval);
+  }, [partner?.id, partner?.availability, partner?.status]);
+
   // Incoming request realtime + initial fetch
   useEffect(() => {
     if (!partner) return;
@@ -466,7 +485,7 @@ function PartnerLayout() {
         await db.from("delivery_notifications").update({ is_read: true }).in("id", ids);
       }
 
-      if (partner.availability !== "online") {
+      if (partner.availability !== "online" || partner.status !== "approved") {
         setRequest(null);
         loadInFlight = false;
         return;
@@ -489,32 +508,16 @@ function PartnerLayout() {
         return;
       }
 
-      // Realtime/server dispatch can be delayed or unavailable. This secure
-      // RPC atomically creates one eligible offer for this authenticated,
-      // approved online partner without exposing unassigned order data.
-      try {
-        await claimNextDeliveryOffer();
-      } catch (claimError) {
-        console.error("[delivery-assignments] offer claim failed", {
-          message: claimError instanceof Error ? claimError.message : "unknown error",
-        });
-      }
       const { data, error } = await db
         .from("delivery_assignments")
-        // Keep the notification query independent from the orders relation.
-        // A broken/overly restrictive orders policy must not hide a delivery
-        // assignment from the partner.
         .select("*")
         .eq("partner_id", partner.id)
-        // The shared SQL workflow creates delivery requests as `pending`.
-        // Keep `requested` for compatibility with older assignment rows.
         .in("status", ["pending", "requested"])
         .gt("expires_at", new Date().toISOString())
         .order("created_at", { ascending: false })
         .limit(1);
       if (error) {
         console.error("[delivery-assignments] incoming request load failed", error);
-        toast.error("Could not load delivery requests. Please try again.");
         loadInFlight = false;
         return;
       }
@@ -528,16 +531,16 @@ function PartnerLayout() {
       if (
         !["pending", "requested"].includes(assignment.status) ||
         !assignment.expires_at ||
-        new Date(assignment.expires_at).getTime() <= Date.now()
+        new Date(assignment.expires_at).getTime() <= Date.now() ||
+        handledAssignmentIdsRef.current.has(assignment.id)
       ) {
-        setRequest(null);
+        if (!handledAssignmentIdsRef.current.has(assignment.id)) {
+          setRequest(null);
+        }
         loadInFlight = false;
         return;
       }
 
-      // Order details are supplemental to the alert. If this relation query
-      // is blocked by an orders RLS issue, the partner can still see and act
-      // on the incoming assignment.
       const { data: order, error: orderError } = await db
         .from("orders")
         .select(DELIVERY_ORDER_SELECT)
@@ -546,16 +549,15 @@ function PartnerLayout() {
       if (orderError) {
         console.error("[delivery-assignments] order details load failed", orderError);
       }
-      // A stale assignment must never be processed when the order has already
-      // been assigned (including after an accept/realtime race).
       if (order?.assigned_partner_id) {
         setRequest(null);
         loadInFlight = false;
         return;
       }
 
-      // Auto-approve incoming delivery request (No manual Accept/Decline step)
+      // Auto-approve incoming delivery request
       try {
+        handledAssignmentIdsRef.current.add(assignment.id);
         const acceptedData = await acceptDelivery(assignment.id);
         if (acceptedData) {
           toast.success("⚡ Order Auto-Approved & Assigned!", {
@@ -569,6 +571,9 @@ function PartnerLayout() {
         }
       } catch (autoErr) {
         console.error("[auto-approval] failed auto-accepting delivery", autoErr);
+        // Do not set request modal or loop if auto-accept fails
+        loadInFlight = false;
+        return;
       }
 
       setRequest(normalizeAssignment({ ...assignment, orders: order ?? null }));

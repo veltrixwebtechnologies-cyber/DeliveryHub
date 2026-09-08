@@ -80,11 +80,21 @@ class DeliveryLocationTracker {
 
     this.watchId = navigator.geolocation.watchPosition(
       (pos) => this.handlePositionUpdate(pos),
-      (err) => console.warn("[GPS Tracker] Geolocation error", err.message),
+      (err) => {
+        const msg =
+          err.code === 1
+            ? "Location permission denied"
+            : err.code === 2
+              ? "GPS position unavailable"
+              : err.code === 3
+                ? "GPS timed out"
+                : err.message;
+        console.warn("[GPS Tracker] Geolocation error:", msg, `(code ${err.code})`);
+      },
       {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 3000,
+        enableHighAccuracy: false,
+        timeout: 30_000,
+        maximumAge: 10_000,
       },
     );
   }
