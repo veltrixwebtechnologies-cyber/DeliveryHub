@@ -1,3 +1,4 @@
+import { acquireCurrentPosition } from "@/lib/acquire-location";
 import { watchGPS } from "@/lib/gps-watch";
 import { supabase } from "@/integrations/supabase/client";
 import { usableGPS } from "@/lib/coordinates";
@@ -17,6 +18,7 @@ class DeliveryLocationTracker {
   private lastSentAt = 0;
   private lastCapturedAt = 0;
   private sending = false;
+  private reconnectAcquisition: AbortController | null = null;
   constructor() {
     if (typeof window !== "undefined")
       window.addEventListener("online", () => this.flushOfflineQueue());
@@ -34,12 +36,15 @@ class DeliveryLocationTracker {
   }
   public updateAssignmentId(id: string | null) {
     if (this.currentAssignmentId !== id) {
+      this.reconnectAcquisition?.abort();
       this.lastSentAt = 0;
       this.lastCapturedAt = 0;
     }
     this.currentAssignmentId = id;
   }
   public stopTracking() {
+    this.reconnectAcquisition?.abort();
+    this.reconnectAcquisition = null;
     if (this.stopWatch !== null && typeof navigator !== "undefined") this.stopWatch();
     this.stopWatch = null;
     this.currentAssignmentId = null;
@@ -90,13 +95,26 @@ class DeliveryLocationTracker {
       localStorage.removeItem("localshore_location_offline_queue");
     } catch {}
     if (this.stopWatch === null || !navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        void this.submitPosition(position, this.currentAssignmentId);
-      },
-      (error) => console.warn("[GPS Tracker]", error.message),
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
-    );
+    this.reconnectAcquisition?.abort();
+    const controller = new AbortController();
+    this.reconnectAcquisition = controller;
+    const assignmentId = this.currentAssignmentId;
+    void acquireCurrentPosition({ signal: controller.signal })
+      .then((position) => {
+        if (
+          !controller.signal.aborted &&
+          this.stopWatch !== null &&
+          assignmentId === this.currentAssignmentId
+        )
+          void this.submitPosition(position, assignmentId);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted)
+          console.warn(
+            "[GPS Tracker]",
+            error instanceof Error ? error.message : "Location unavailable",
+          );
+      });
   }
 }
 export const deliveryTracker = new DeliveryLocationTracker();

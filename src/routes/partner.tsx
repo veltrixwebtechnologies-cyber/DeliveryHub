@@ -1,3 +1,4 @@
+import { acquireCurrentPosition, LocationAcquisitionError } from "@/lib/acquire-location";
 import { watchGPS } from "@/lib/gps-watch";
 import { freshPartnerCoordinates, usableGPS } from "@/lib/coordinates";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -305,39 +306,27 @@ function PartnerLayout() {
     [markOffline],
   );
 
-  const requestCurrentPosition = useCallback((): Promise<boolean> => {
-    if (!("geolocation" in navigator)) {
-      toast.error("Location services are not available in this browser.");
-      return Promise.resolve(false);
-    }
-
-    // Retry a timeout with high accuracy still required; never downgrade the request.
-    return new Promise((resolve) => {
-      const submit = (position: GeolocationPosition) => {
-        void submitPosition(position).then(resolve);
-      };
-      const fallback = (error: GeolocationPositionError) => {
-        if (error.code !== 3) {
-          handlePositionError(error);
-          resolve(false);
-          return;
-        }
-        navigator.geolocation.getCurrentPosition(
-          submit,
-          (fallbackError) => {
-            handlePositionError(fallbackError);
-            resolve(false);
-          },
-          { enableHighAccuracy: true, maximumAge: 0, timeout: 30_000 },
-        );
-      };
-      navigator.geolocation.getCurrentPosition(submit, fallback, {
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 15_000,
+  const refreshAcquisition = useRef<AbortController | null>(null);
+  useEffect(() => () => refreshAcquisition.current?.abort(), []);
+  const requestCurrentPosition = useCallback(async (): Promise<boolean> => {
+    refreshAcquisition.current?.abort();
+    const controller = new AbortController();
+    refreshAcquisition.current = controller;
+    try {
+      const position = await acquireCurrentPosition({
+        signal: controller.signal,
+        subscribe: watchGPS,
       });
-    });
-  }, [handlePositionError, submitPosition]);
+      if (controller.signal.aborted) return false;
+      return await submitPosition(position);
+    } catch (error) {
+      if (controller.signal.aborted) return false;
+      if (error instanceof LocationAcquisitionError && error.status === "denied")
+        void markOffline("GPS permission denied");
+      toast.error(error instanceof Error ? error.message : "Precise location unavailable. Retry.");
+      return false;
+    }
+  }, [markOffline, submitPosition]);
 
   useEffect(() => {
     if (!partner) return;

@@ -205,6 +205,7 @@ export function DeliveryNavigationScreen({
       <div className="relative flex-1 min-h-0">
         <LiveNavigationMap
           driverPos={nav.displayPos}
+          driverAccuracy={nav.accuracy}
           vendorLocation={vendorLocation}
           vendorLiveLocation={vendorLiveLocation}
           customerLocation={customerLocation}

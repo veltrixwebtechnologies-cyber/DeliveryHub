@@ -19,6 +19,7 @@ import { getMapTileConfig } from "@/lib/map-provider";
 
 interface LiveNavMapProps {
   driverPos: { lat: number; lng: number; heading: number } | null;
+  driverAccuracy?: number | null;
   vendorLocation: MapLocation | null;
   vendorLiveLocation?: MapLocation | null | undefined;
   customerLocation: MapLocation | null;
@@ -68,16 +69,6 @@ function destinationPinSvg(color: string, emoji: string): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
-function pulseCircleSvg(color: string): string {
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'>
-    <circle cx='30' cy='30' r='28' fill='${color}' opacity='0.15'>
-      <animate attributeName='r' values='15;28;15' dur='2s' repeatCount='indefinite'/>
-      <animate attributeName='opacity' values='0.3;0.08;0.3' dur='2s' repeatCount='indefinite'/>
-    </circle>
-  </svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-
 function isValidLocation(lat: number, lng: number): boolean {
   return (
     Number.isFinite(lat) &&
@@ -94,6 +85,7 @@ const DEFAULT_VISUAL_CENTER: [number, number] = [11.02, 76.99];
 
 export function LiveNavigationMap({
   driverPos,
+  driverAccuracy,
   vendorLocation,
   vendorLiveLocation,
   customerLocation,
@@ -286,21 +278,30 @@ export function LiveNavigationMap({
       const driverColor = isOffRoute ? "#EF4444" : isStale ? "#F59E0B" : "#10B981";
       upsertMarker("driver", driverPos, driverMarkerSvg(driverPos.heading, driverColor), [48, 48]);
 
-      // GPS accuracy pulse circle
-      if (!pulseRef.current) {
-        const pulseIcon = L.divIcon({
-          className: "driver-pulse",
-          html: `<div style="width:60px;height:60px;"><img src="${pulseCircleSvg(driverColor)}" width="60" height="60"/></div>`,
-          iconSize: [60, 60],
-          iconAnchor: [30, 30],
-        });
-        pulseRef.current = L.marker([driverPos.lat, driverPos.lng], {
-          icon: pulseIcon,
-          zIndexOffset: 999,
-          interactive: false,
-        }).addTo(map);
-      } else {
-        pulseRef.current.setLatLng([driverPos.lat, driverPos.lng]);
+      // Draw the device's reported uncertainty in metres, not a fixed-size decorative pulse.
+      if (
+        !isStale &&
+        typeof driverAccuracy === "number" &&
+        Number.isFinite(driverAccuracy) &&
+        driverAccuracy > 0
+      ) {
+        if (!pulseRef.current)
+          pulseRef.current = L.circle([driverPos.lat, driverPos.lng], {
+            className: "gps-accuracy-circle",
+            radius: driverAccuracy,
+            color: driverColor,
+            weight: 1,
+            fillOpacity: 0.12,
+            interactive: false,
+          }).addTo(map);
+        else {
+          pulseRef.current.setLatLng([driverPos.lat, driverPos.lng]);
+          pulseRef.current.setRadius(driverAccuracy);
+          pulseRef.current.setStyle({ color: driverColor });
+        }
+      } else if (pulseRef.current) {
+        pulseRef.current.remove();
+        pulseRef.current = null;
       }
     }
 
@@ -344,6 +345,7 @@ export function LiveNavigationMap({
     }
   }, [
     driverPos,
+    driverAccuracy,
     vendorLocation,
     vendorLiveLocation,
     customerLocation,
