@@ -22,11 +22,18 @@ export function parseCoordinates(lat: unknown, lng: unknown): Coordinates | null
 export function pickupCoordinates(seller: any): Coordinates | null {
   const w = seller?.wizard_data;
   // A separate pickup address must never silently inherit the business pin.
-  if (w?.pickupSame === false) return parseCoordinates(w.pickupLat, w.pickupLng);
+  if (w?.locationConfirmationRequired) return null;
+  if (w?.pickupSame === false)
+    return (
+      parseCoordinates(w.pickupLat, w.pickupLng) ??
+      parseCoordinates(w.pickupCoordinates?.lat, w.pickupCoordinates?.lng)
+    );
   return (
     parseCoordinates(seller?.lat, seller?.lng) ??
     parseCoordinates(seller?.latitude, seller?.longitude) ??
-    parseCoordinates(w?.lat, w?.lng)
+    parseCoordinates(w?.lat, w?.lng) ??
+    parseCoordinates(w?.pickupCoordinates?.lat, w?.pickupCoordinates?.lng) ??
+    parseCoordinates(w?.shopCoordinates?.lat, w?.shopCoordinates?.lng)
   );
 }
 

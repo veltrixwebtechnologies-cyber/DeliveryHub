@@ -1,3 +1,4 @@
+import { watchGPS } from "@/lib/gps-watch";
 import { supabase } from "@/integrations/supabase/client";
 import { usableGPS } from "@/lib/coordinates";
 
@@ -11,7 +12,7 @@ export interface GPSPosition {
 }
 
 class DeliveryLocationTracker {
-  private watchId: number | null = null;
+  private stopWatch: (() => void) | null = null;
   private currentAssignmentId: string | null = null;
   private lastSentAt = 0;
   private lastCapturedAt = 0;
@@ -22,13 +23,13 @@ class DeliveryLocationTracker {
   }
   public startTracking(assignmentId: string | null = null) {
     this.updateAssignmentId(assignmentId);
-    if (this.watchId !== null || typeof navigator === "undefined" || !navigator.geolocation) return;
-    this.watchId = navigator.geolocation.watchPosition(
+    if (this.stopWatch !== null || typeof navigator === "undefined" || !navigator.geolocation)
+      return;
+    this.stopWatch = watchGPS(
       (position) => {
         void this.submitPosition(position, this.currentAssignmentId);
       },
       (error) => console.warn("[GPS Tracker]", error.message),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 3000 },
     );
   }
   public updateAssignmentId(id: string | null) {
@@ -39,9 +40,8 @@ class DeliveryLocationTracker {
     this.currentAssignmentId = id;
   }
   public stopTracking() {
-    if (this.watchId !== null && typeof navigator !== "undefined")
-      navigator.geolocation.clearWatch(this.watchId);
-    this.watchId = null;
+    if (this.stopWatch !== null && typeof navigator !== "undefined") this.stopWatch();
+    this.stopWatch = null;
     this.currentAssignmentId = null;
   }
   public async submitPosition(position: GeolocationPosition, assignmentId: string | null) {
@@ -89,7 +89,7 @@ class DeliveryLocationTracker {
     try {
       localStorage.removeItem("localshore_location_offline_queue");
     } catch {}
-    if (this.watchId === null || !navigator.geolocation) return;
+    if (this.stopWatch === null || !navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       (position) => {
         void this.submitPosition(position, this.currentAssignmentId);

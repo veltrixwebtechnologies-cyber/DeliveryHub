@@ -21,6 +21,7 @@ export interface TurnStep {
 }
 
 export interface RouteResult {
+  status: "success";
   distanceMeters: number;
   durationSeconds: number;
   geometry: [number, number][]; // [lng, lat][]
@@ -191,6 +192,7 @@ export async function fetchDeliveryRoute(
         return result;
       });
       return {
+        status: "success",
         distanceMeters: route.distance,
         durationSeconds: route.duration,
         geometry,

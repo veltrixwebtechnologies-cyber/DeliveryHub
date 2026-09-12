@@ -1,3 +1,4 @@
+import { watchGPS } from "@/lib/gps-watch";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { deliveryTracker, type GPSPosition } from "@/services/delivery-location-tracker";
 import { usableGPS, MAX_LOCATION_AGE_MS } from "@/lib/coordinates";
@@ -107,7 +108,9 @@ export function useDriverNavigation(props: UseDriverNavigationProps) {
     customerLabel,
     enabled,
   } = props;
-  const phase: NavigationPhase = ["picked_up", "out_for_delivery"].includes(assignmentStatus)
+  const phase: NavigationPhase = ["picked_up", "out_for_delivery", "going_to_customer"].includes(
+    assignmentStatus,
+  )
     ? "to_customer"
     : "to_vendor";
   const destination = phase === "to_vendor" ? vendorLocation : customerLocation;
@@ -206,7 +209,7 @@ export function useDriverNavigation(props: UseDriverNavigationProps) {
       return;
     }
     let alive = true;
-    let watch: number | undefined;
+    let stopWatch: (() => void) | undefined;
     const receive = (position: GeolocationPosition) => {
       if (!alive) return;
       if (!usableGPS(position)) {
@@ -283,33 +286,17 @@ export function useDriverNavigation(props: UseDriverNavigationProps) {
       void deliveryTracker.submitPosition(position, assignmentId);
       refreshRoute();
     };
-    const startWatch = (highAccuracy: boolean) => {
-      if (watch !== undefined) navigator.geolocation.clearWatch(watch);
-      watch = navigator.geolocation.watchPosition(
-        receive,
-        (error) => {
-          if (!alive) return;
-          if (highAccuracy && error.code === 3) {
-            startWatch(false);
-            return;
-          }
-          patch({
-            isTracking: false,
-            isStale: true,
-            error:
-              error.code === 1
-                ? "Location permission denied. Allow precise location to navigate."
-                : "Unable to obtain your location. Please check GPS.",
-          });
-        },
-        {
-          enableHighAccuracy: highAccuracy,
-          maximumAge: 5000,
-          timeout: highAccuracy ? 15000 : 20000,
-        },
-      );
-    };
-    startWatch(true);
+    stopWatch = watchGPS(receive, (error) => {
+      if (!alive) return;
+      patch({
+        isTracking: false,
+        isStale: true,
+        error:
+          error.code === 1
+            ? "Allow precise location to navigate."
+            : "Unable to obtain a precise location. Check GPS or retry outdoors.",
+      });
+    });
     const timer = window.setInterval(() => {
       if (
         !current.current.lastUpdateAt ||
@@ -320,7 +307,7 @@ export function useDriverNavigation(props: UseDriverNavigationProps) {
     }, 5000);
     return () => {
       alive = false;
-      if (watch !== undefined) navigator.geolocation.clearWatch(watch);
+      stopWatch?.();
       clearInterval(timer);
       requests.current.cancel();
     };
@@ -345,6 +332,16 @@ export function useDriverNavigation(props: UseDriverNavigationProps) {
 
   return {
     ...state,
+    gpsStatus: !state.driverPos
+      ? ("acquiring" as const)
+      : state.isStale
+        ? ("stale" as const)
+        : ("active" as const),
+    gpsMessage: !state.driverPos
+      ? "Waiting for precise GPS"
+      : state.isStale
+        ? "GPS stale"
+        : `GPS ±${Math.round(state.accuracy ?? 0)}m`,
     phase,
     destination,
     destinationLabel,

@@ -1,6 +1,6 @@
 /**
  * LiveNavigationMap — Full-screen Leaflet navigation map for delivery driver
- * 
+ *
  * Features:
  * - Real GPS driver position with smooth animation
  * - Road-following OSRM route polyline
@@ -14,13 +14,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MapLocation, RouteResult } from "@/lib/delivery-routing";
-import { formatDistanceShort } from "@/lib/delivery-routing";
 
 import { getMapTileConfig } from "@/lib/map-provider";
 
 interface LiveNavMapProps {
   driverPos: { lat: number; lng: number; heading: number } | null;
   vendorLocation: MapLocation | null;
+  vendorLiveLocation?: MapLocation | null | undefined;
   customerLocation: MapLocation | null;
   destination: MapLocation | null;
   route: RouteResult | null;
@@ -78,11 +78,24 @@ function pulseCircleSvg(color: string): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
+function isValidLocation(lat: number, lng: number): boolean {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lng) <= 180 &&
+    !(lat === 0 && lng === 0)
+  );
+}
+
+const DEFAULT_VISUAL_CENTER: [number, number] = [11.02, 76.99];
+
 // ── Component ──────────────────────────────────────────────────────
 
 export function LiveNavigationMap({
   driverPos,
   vendorLocation,
+  vendorLiveLocation,
   customerLocation,
   destination,
   route,
@@ -102,6 +115,7 @@ export function LiveNavigationMap({
   const markersRef = useRef<Record<string, any>>({});
   const polylineRef = useRef<any>(null);
   const pulseRef = useRef<any>(null);
+  const mountedRef = useRef(true);
   const [isUserPanning, setIsUserPanning] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const fittedDestinationRef = useRef("");
@@ -109,6 +123,7 @@ export function LiveNavigationMap({
 
   // ── Initialize Leaflet map (once) ──
   useEffect(() => {
+    mountedRef.current = true;
     let cancelled = false;
     let resizeObserver: ResizeObserver | undefined;
 
@@ -120,12 +135,17 @@ export function LiveNavigationMap({
 
         LRef.current = L;
 
-        // Start at destination or default location
-        const center: [number, number] = driverPos
-          ? [driverPos.lat, driverPos.lng]
-          : destination
-          ? [destination.lat, destination.lng]
-          : [11.0168, 76.9558]; // Coimbatore default
+        // Start at destination or a visual-only fallback location.
+        const center: [number, number] =
+          driverPos && isValidLocation(driverPos.lat, driverPos.lng)
+            ? [driverPos.lat, driverPos.lng]
+            : destination
+              ? [destination.lat, destination.lng]
+              : vendorLocation && isValidLocation(vendorLocation.lat, vendorLocation.lng)
+                ? [vendorLocation.lat, vendorLocation.lng]
+                : customerLocation && isValidLocation(customerLocation.lat, customerLocation.lng)
+                  ? [customerLocation.lat, customerLocation.lng]
+                  : DEFAULT_VISUAL_CENTER;
 
         const map = L.map(containerRef.current, {
           center,
@@ -145,14 +165,14 @@ export function LiveNavigationMap({
 
         // Force Leaflet to recalculate container bounds & request tile grid
         setTimeout(() => {
-          map.invalidateSize();
+          if (!cancelled) map.invalidateSize();
         }, 100);
 
         // Observe container resizes (flex layout adjustments)
         if (typeof ResizeObserver !== "undefined") {
-          const ro = resizeObserver = new ResizeObserver(() => {
+          const ro = (resizeObserver = new ResizeObserver(() => {
             map.invalidateSize();
-          });
+          }));
           ro.observe(containerRef.current);
         }
 
@@ -171,6 +191,7 @@ export function LiveNavigationMap({
 
     return () => {
       cancelled = true;
+      mountedRef.current = false;
       resizeObserver?.disconnect();
       if (driverAnimationRef.current !== null) cancelAnimationFrame(driverAnimationRef.current);
       if (mapRef.current) {
@@ -185,7 +206,13 @@ export function LiveNavigationMap({
 
   // ── Marker update helper with smooth animation ──
   const upsertMarker = useCallback(
-    (id: string, pos: { lat: number; lng: number } | null, iconUrl: string, size: [number, number], anchor?: [number, number]) => {
+    (
+      id: string,
+      pos: { lat: number; lng: number } | null,
+      iconUrl: string,
+      size: [number, number],
+      anchor?: [number, number],
+    ) => {
       const map = mapRef.current;
       const L = LRef.current;
       if (!map || !L) return;
@@ -206,7 +233,10 @@ export function LiveNavigationMap({
 
       let marker = markersRef.current[id];
       if (!marker) {
-        marker = L.marker([pos.lat, pos.lng], { icon, zIndexOffset: id === "driver" ? 1000 : 500 }).addTo(map);
+        marker = L.marker([pos.lat, pos.lng], {
+          icon,
+          zIndexOffset: id === "driver" ? 1000 : 500,
+        }).addTo(map);
         markersRef.current[id] = marker;
       } else {
         marker.setIcon(icon);
@@ -219,6 +249,7 @@ export function LiveNavigationMap({
           const duration = 500;
 
           const animate = (now: number) => {
+            if (!mountedRef.current || !mapRef.current) return;
             const t = Math.min(1, (now - startTime) / duration);
             const ease = 1 - Math.pow(1 - t, 3); // easeOutCubic
             marker.setLatLng([
@@ -233,7 +264,7 @@ export function LiveNavigationMap({
         }
       }
     },
-    []
+    [],
   );
 
   // ── Update markers when positions change ──
@@ -246,16 +277,14 @@ export function LiveNavigationMap({
     // Driver marker with heading rotation
     if (!driverPos) {
       upsertMarker("driver", null, "", [48, 48]);
-      if (pulseRef.current) { map.removeLayer(pulseRef.current); pulseRef.current = null; }
+      if (pulseRef.current) {
+        map.removeLayer(pulseRef.current);
+        pulseRef.current = null;
+      }
     }
     if (driverPos) {
       const driverColor = isOffRoute ? "#EF4444" : isStale ? "#F59E0B" : "#10B981";
-      upsertMarker(
-        "driver",
-        driverPos,
-        driverMarkerSvg(driverPos.heading, driverColor),
-        [48, 48]
-      );
+      upsertMarker("driver", driverPos, driverMarkerSvg(driverPos.heading, driverColor), [48, 48]);
 
       // GPS accuracy pulse circle
       if (!pulseRef.current) {
@@ -279,16 +308,51 @@ export function LiveNavigationMap({
     if (!vendorLocation) upsertMarker("vendor", null, "", [36, 48]);
     if (vendorLocation) {
       const vendorColor = phase === "to_vendor" ? "#8B5CF6" : "#6B7280";
-      upsertMarker("vendor", vendorLocation, destinationPinSvg(vendorColor, "🏪"), [36, 48], [18, 48]);
+      upsertMarker(
+        "vendor",
+        vendorLocation,
+        destinationPinSvg(vendorColor, "🏪"),
+        [36, 48],
+        [18, 48],
+      );
+    }
+
+    // Vendor Live Location marker (Temporary live guidance)
+    if (vendorLiveLocation && isValidLocation(vendorLiveLocation.lat, vendorLiveLocation.lng)) {
+      upsertMarker(
+        "vendor_live",
+        vendorLiveLocation,
+        destinationPinSvg("#10B981", "📍"),
+        [36, 48],
+        [18, 48],
+      );
+    } else {
+      upsertMarker("vendor_live", null, "", [0, 0]);
     }
 
     // Customer marker
     if (!customerLocation) upsertMarker("customer", null, "", [36, 48]);
     if (customerLocation) {
       const customerColor = phase === "to_customer" ? "#E3A72E" : "#6B7280";
-      upsertMarker("customer", customerLocation, destinationPinSvg(customerColor, "🏠"), [36, 48], [18, 48]);
+      upsertMarker(
+        "customer",
+        customerLocation,
+        destinationPinSvg(customerColor, "🏠"),
+        [36, 48],
+        [18, 48],
+      );
     }
-  }, [driverPos, vendorLocation, customerLocation, phase, isOffRoute, isStale, mapReady, upsertMarker]);
+  }, [
+    driverPos,
+    vendorLocation,
+    vendorLiveLocation,
+    customerLocation,
+    phase,
+    isOffRoute,
+    isStale,
+    mapReady,
+    upsertMarker,
+  ]);
 
   // ── Update route polyline ──
   useEffect(() => {
@@ -304,16 +368,21 @@ export function LiveNavigationMap({
 
     if (route?.phase === phase && route.geometry.length > 0) {
       const latLngs = route.geometry.map(([lng, lat]: [number, number]) => [lat, lng]);
-      
-      const routeColor = phase === "to_vendor" ? "#8B5CF6" : "#3B82F6";
-      
-      polylineRef.current = L.polyline(latLngs, {
-        color: routeColor,
-        weight: 6,
-        opacity: 0.9,
-        lineCap: "round",
-        lineJoin: "round",
-      }).addTo(map);
+
+      const routeColor = phase === "to_vendor" ? "#8B5CF6" : "#3B82E6";
+      const routeStyle =
+        route.status === "success"
+          ? { color: routeColor, weight: 6, opacity: 0.9, lineCap: "round", lineJoin: "round" }
+          : {
+              color: "#94A3B8",
+              weight: 4,
+              opacity: 0.75,
+              dashArray: "8 8",
+              lineCap: "round",
+              lineJoin: "round",
+            };
+
+      polylineRef.current = L.polyline(latLngs, routeStyle).addTo(map);
 
       // Only auto-fit bounds on initial load if not panning
       const destinationKey = [phase, destination?.lat, destination?.lng].join(":");
@@ -331,7 +400,9 @@ export function LiveNavigationMap({
     }
   }, [route, phase, mapReady, isUserPanning, destination?.lat, destination?.lng]);
 
-  useEffect(() => { if (followMode) setIsUserPanning(false); }, [followMode]);
+  useEffect(() => {
+    if (followMode) setIsUserPanning(false);
+  }, [followMode]);
 
   // ── Follow driver mode: center map on driver ──
   useEffect(() => {
@@ -393,7 +464,9 @@ export function LiveNavigationMap({
             <span className="absolute h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
             <span className="relative h-2 w-2 rounded-full bg-emerald-400" />
           </div>
-          <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Recenter Map</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+            Recenter Map
+          </span>
         </button>
       )}
     </div>

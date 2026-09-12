@@ -16,3 +16,7 @@ Use the matching `amrs-map-patch` branches of VendorAdmin and locc. Existing sel
 No database migrations or backend deployments are included. Test an authenticated delivery on a phone over HTTPS (or localhost), with precise location enabled, from acceptance through pickup and delivery. Verify GPS updates reach the customer map, off-route recalculation works, and loss of GPS/network is clearly indicated.
 
 Routes use the existing public OSRM car profile, not motorcycle-specific restrictions or live traffic. Network availability and map data affect routing; errors are explicit. Do not interpret this patch as offline navigation or a guarantee of road accessibility.
+
+## 12 September integration
+
+The original patch history and current main have been merged without rewriting commits. Additional location fixes and regression tests are included. See [LOCATION-FIX-REPORT.md](LOCATION-FIX-REPORT.md) for the complete cross-repository report, validation, and rollout requirements.

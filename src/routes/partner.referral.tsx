@@ -206,7 +206,11 @@ function PartnerReferral() {
                 <Button onClick={handleCopyLink} variant="secondary" size="sm" className="flex-1">
                   <Copy className="mr-1.5 h-4 w-4" /> Copy Link
                 </Button>
-                <Button onClick={handleShareWhatsApp} size="sm" className="flex-1 bg-emerald-600 hover:bg-emerald-700">
+                <Button
+                  onClick={handleShareWhatsApp}
+                  size="sm"
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                >
                   <Share2 className="mr-1.5 h-4 w-4" /> Share
                 </Button>
               </div>
@@ -228,7 +232,8 @@ function PartnerReferral() {
               </div>
               <h3 className="font-semibold text-foreground">Share Referral Link</h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Send your unique code or registration link to potential delivery partners via WhatsApp or SMS.
+                Send your unique code or registration link to potential delivery partners via
+                WhatsApp or SMS.
               </p>
             </div>
             <div className="rounded-2xl border border-border p-4 space-y-2 bg-card">
@@ -237,7 +242,8 @@ function PartnerReferral() {
               </div>
               <h3 className="font-semibold text-foreground">Friend Registers</h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Your friend completes registration with documents, vehicle details, and preferred delivery zone.
+                Your friend completes registration with documents, vehicle details, and preferred
+                delivery zone.
               </p>
             </div>
             <div className="rounded-2xl border border-border p-4 space-y-2 bg-card">
@@ -246,7 +252,8 @@ function PartnerReferral() {
               </div>
               <h3 className="font-semibold text-foreground">Get ₹500 Wallet Credit</h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Once they complete 20 deliveries, ₹500 cash bonus is instantly added to your payout balance!
+                Once they complete 20 deliveries, ₹500 cash bonus is instantly added to your payout
+                balance!
               </p>
             </div>
           </div>
@@ -267,10 +274,15 @@ function PartnerReferral() {
         <CardContent>
           <div className="divide-y divide-border rounded-xl border border-border overflow-hidden">
             {mockReferrals.map((item) => (
-              <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3 bg-card hover:bg-secondary/20 transition-colors">
+              <div
+                key={item.id}
+                className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3 bg-card hover:bg-secondary/20 transition-colors"
+              >
                 <div className="space-y-1">
                   <p className="font-semibold text-foreground text-sm">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">{item.mobile} · Joined {item.date}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {item.mobile} · Joined {item.date}
+                  </p>
                 </div>
                 <div className="flex items-center justify-between sm:justify-end gap-4">
                   <div className="text-left sm:text-right">

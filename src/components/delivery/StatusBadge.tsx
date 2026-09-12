@@ -6,10 +6,14 @@ const TONE: Record<string, string> = {
   verified: "bg-emerald-600 text-white font-medium",
   delivered: "bg-emerald-600 text-white font-medium",
   online: "bg-emerald-600 text-white font-medium",
-  pending: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-medium",
-  pending_verification: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-medium",
-  under_review: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-medium",
-  info_requested: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30 font-medium",
+  pending:
+    "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-medium",
+  pending_verification:
+    "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-medium",
+  under_review:
+    "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-medium",
+  info_requested:
+    "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30 font-medium",
   ready_for_pickup: "bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium",
   break: "bg-secondary text-secondary-foreground",
   rejected: "bg-destructive text-destructive-foreground font-medium",

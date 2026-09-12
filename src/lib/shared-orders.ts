@@ -1,26 +1,28 @@
-import { pickupCoordinates } from "./coordinates";
+import { pickupCoordinates, parseCoordinates } from "./coordinates";
 /**
  * The customer and seller apps use the shared marketplace schema:
  * orders.seller_id, order_number, buyer_* and order_items. The delivery UI
  * keeps its existing display model, so all schema translation lives here.
  */
+import { isValidCoordinate } from "@/lib/geo";
+
 export function normalizeOrder(row: any) {
   const seller = row?.seller ?? row?.vendors ?? null;
   const pickup = pickupCoordinates(seller);
   const w = seller?.wizard_data;
-  const address = (w?.pickupSame === false ? [w.pickupAddress, w.pickupCity, w.pickupState, w.pickupPincode] : [
-    seller?.address_line1,
-    seller?.address_line2,
-    seller?.city,
-    seller?.state,
-    seller?.pincode,
-  ])
+  const address = (
+    w?.pickupSame === false
+      ? [w.pickupAddress, w.pickupCity, w.pickupState, w.pickupPincode]
+      : [seller?.address_line1, seller?.address_line2, seller?.city, seller?.state, seller?.pincode]
+  )
     .filter(Boolean)
     .join(", ");
 
   const activeAssignment = Array.isArray(row?.delivery_assignments)
-    ? (row?.delivery_assignments.find((a: any) => a.status !== "expired" && a.status !== "rejected") ?? row?.delivery_assignments[0])
-    : row?.delivery_assignments ?? null;
+    ? (row?.delivery_assignments.find(
+        (a: any) => a.status !== "expired" && a.status !== "rejected",
+      ) ?? row?.delivery_assignments[0])
+    : (row?.delivery_assignments ?? null);
 
   const partnerRow = row?.assigned_partner ?? activeAssignment?.delivery_partners ?? null;
   const assigned_partner = partnerRow
@@ -35,12 +37,19 @@ export function normalizeOrder(row: any) {
       }
     : null;
 
+  const customer = parseCoordinates(
+    row?.customer_latitude ?? row?.destination_lat,
+    row?.customer_longitude ?? row?.destination_lng,
+  );
+
   return {
     ...row,
     order_code: row?.order_code ?? row?.order_number,
     customer_name: row?.customer_name ?? row?.buyer_name,
     customer_phone: row?.customer_phone ?? row?.buyer_phone,
     customer_address: row?.customer_address ?? row?.buyer_address,
+    customer_latitude: customer?.lat ?? null,
+    customer_longitude: customer?.lng ?? null,
     order_total: row?.order_total ?? row?.total,
     delivery_fee: row?.delivery_fee ?? row?.shipping_fee,
     assigned_partner,
@@ -55,9 +64,11 @@ export function normalizeOrder(row: any) {
       ? {
           ...seller,
           shop_name: seller.shop_name ?? seller.business_name,
-          address: w?.pickupSame === false ? address : seller.address ?? address,
-          latitude: pickup?.lat ?? null, longitude: pickup?.lng ?? null,
-          lat: pickup?.lat ?? null, lng: pickup?.lng ?? null,
+          address: w?.pickupSame === false ? address : (seller.address ?? address),
+          latitude: pickup?.lat ?? null,
+          longitude: pickup?.lng ?? null,
+          lat: pickup?.lat ?? null,
+          lng: pickup?.lng ?? null,
           phone: seller.phone,
         }
       : null,
@@ -70,4 +81,3 @@ export function normalizeAssignment(row: any) {
 
 export const DELIVERY_ORDER_SELECT =
   "*, seller:sellers(*), order_items(*), delivery_assignments(*, delivery_partners(*))";
-
