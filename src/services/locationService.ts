@@ -9,7 +9,7 @@ export interface LocationService {
   submitCurrentLocation(update: LocationUpdate): Promise<void>;
 }
 
-import { parseCoordinates } from "@/lib/coordinates";
+import { parseCoordinates, MAX_NAVIGATION_ACCURACY_M } from "@/lib/coordinates";
 
 export const locationService: LocationService = {
   async submitCurrentLocation({ latitude, longitude, accuracyM, capturedAt }) {
@@ -19,7 +19,7 @@ export const locationService: LocationService = {
       typeof accuracyM !== "number" ||
       !Number.isFinite(accuracyM) ||
       accuracyM < 0 ||
-      accuracyM > 100 ||
+      accuracyM > MAX_NAVIGATION_ACCURACY_M ||
       !Number.isFinite(timestamp) ||
       Date.now() - timestamp > 5000 ||
       timestamp > Date.now() + 1000

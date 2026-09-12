@@ -31,6 +31,7 @@ test("vendor live guidance expires and rejects inaccurate or incomplete readings
     { is_active: false },
     { accuracy: null },
     { accuracy: 2000 },
+    { accuracy: 26 },
     { updated_at: new Date(now - 31000).toISOString() },
     { latitude: null },
   ])
@@ -97,7 +98,7 @@ test("location service retains capture time, rejects poor fixes and propagates R
       capturedAt: new Date().toISOString(),
     };
     await assert.rejects(
-      locationService.submitCurrentLocation({ ...update, accuracyM: 15000 }),
+      locationService.submitCurrentLocation({ ...update, accuracyM: 26 }),
       /precise/,
     );
     assert.equal(calls.length, 0);

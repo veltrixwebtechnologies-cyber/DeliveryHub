@@ -1,3 +1,5 @@
+import { usableGPS, MAX_LOCATION_AGE_MS } from "@/lib/coordinates";
+import { watchGPS } from "@/lib/gps-watch";
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
@@ -53,183 +55,93 @@ function LiveLocationCard({
 }: {
   partner: NonNullable<ReturnType<typeof usePartner>["partner"]>;
 }) {
-  const savedLocation = {
-    lat: Number(partner.current_latitude),
-    lng: Number(partner.current_longitude),
-  };
-  const [location, setLocation] = useState(
-    isValidCoordinate(savedLocation.lat, savedLocation.lng) ? savedLocation : null,
-  );
-  const [status, setStatus] = useState("Waiting for GPS location…");
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [status, setStatus] = useState("Waiting for precise GPS location…");
   const [requesting, setRequesting] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [addressName, setAddressName] = useState<string | null>(null);
 
-  const applyLiveLocation = (next: { lat: number; lng: number }) => {
-    if (!isValidCoordinate(next.lat, next.lng)) return;
-    setLocation(next);
-    setUpdatedAt(Date.now());
-    setStatus("Live location updating");
-
-    void supabase
-      .from("delivery_partners")
-      .update({
-        current_latitude: next.lat,
-        current_longitude: next.lng,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", partner.id);
-  };
-
-  useEffect(() => {
-    if (!location) return;
-    let active = true;
-    const fetchAddress = async () => {
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.lat}&lon=${location.lng}&zoom=16`,
-        );
-        if (!res.ok) return;
-        const data = await res.json();
-        if (active && data?.display_name) {
-          const parts = data.display_name.split(",");
-          const shortName = parts.slice(0, 3).join(", ");
-          setAddressName(shortName);
-        }
-      } catch {
-        // ignore geocoding failures
-      }
-    };
-    void fetchAddress();
-    return () => {
-      active = false;
-    };
-  }, [location?.lat, location?.lng]);
-
   const requestFreshLocation = () => {
-    const isLocalhost =
-      window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-    if (!window.isSecureContext && !isLocalhost) {
-      setStatus("Location requires HTTPS or localhost");
-      return;
-    }
-    if (!navigator.geolocation) {
-      setStatus("This browser does not provide GPS location");
+    if (!window.isSecureContext || !navigator.geolocation) {
+      setStatus("Location requires HTTPS and a browser with location access.");
       return;
     }
     setRequesting(true);
-    setStatus("Requesting your current location…");
-    const onPosition = (position: GeolocationPosition) => {
-      applyLiveLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
-      setRequesting(false);
-    };
-    const onError = (error: GeolocationPositionError) => {
-      // Retry with low accuracy (WiFi/IP geolocation) if high accuracy fails or times out
-      navigator.geolocation.getCurrentPosition(
-        onPosition,
-        (finalErr) => {
-          setRequesting(false);
-          setStatus(
-            finalErr.code === finalErr.PERMISSION_DENIED
-              ? "Permission denied — allow Location access in browser site settings"
-              : finalErr.code === finalErr.POSITION_UNAVAILABLE
-                ? "Position unavailable — enable device Location/GPS"
-                : finalErr.code === finalErr.TIMEOUT
-                  ? "Location timed out — please try again"
-                  : `Location failed (error ${finalErr.code})`,
-          );
-        },
-        { enableHighAccuracy: false, maximumAge: 300_000, timeout: 10_000 },
-      );
-    };
-    navigator.geolocation.getCurrentPosition(onPosition, onError, {
-      enableHighAccuracy: true,
-      maximumAge: 30_000,
-      timeout: 6_000,
-    });
+    setStatus("Waiting for GPS accuracy within 25 metres…");
   };
 
   useEffect(() => {
-    if (isValidCoordinate(savedLocation.lat, savedLocation.lng)) {
-      setLocation(savedLocation);
-      setStatus(
-        partner.availability === "online"
-          ? "Live tracking active"
-          : "Showing your last known location",
-      );
-    }
-
-    if (partner.availability === "offline" || !("geolocation" in navigator)) return;
-
-    const onPosition = (position: GeolocationPosition) => {
-      const next = { lat: position.coords.latitude, lng: position.coords.longitude };
-      if (isValidCoordinate(next.lat, next.lng)) {
-        applyLiveLocation(next);
-      }
-    };
-    const onError = (error: GeolocationPositionError) => {
-      setStatus(
-        error.code === error.PERMISSION_DENIED
-          ? "Permission denied — allow Location in the address bar"
-          : error.code === error.POSITION_UNAVAILABLE
-            ? "Position unavailable — showing your last known location"
-            : "GPS timed out — showing your last known location",
-      );
-    };
-
-    navigator.geolocation.getCurrentPosition(onPosition, onError, {
-      enableHighAccuracy: false,
-      maximumAge: 30_000,
-      timeout: 15_000,
-    });
-    const watchId = navigator.geolocation.watchPosition(onPosition, onError, {
-      enableHighAccuracy: false,
-      maximumAge: 30_000,
-      timeout: 30_000,
-    });
-
-    return () => navigator.geolocation.clearWatch(watchId);
-  }, [partner.id, partner.availability]);
-
-  useEffect(() => {
-    const onParentLocation = (event: Event) => {
-      const detail = (event as CustomEvent<{ lat?: number; lng?: number }>).detail;
-      const nextLat = Number(detail?.lat);
-      const nextLng = Number(detail?.lng);
-      if (isValidCoordinate(nextLat, nextLng)) {
-        applyLiveLocation({ lat: nextLat, lng: nextLng });
-      }
-    };
-    window.addEventListener("partner-location-update", onParentLocation);
-    return () => window.removeEventListener("partner-location-update", onParentLocation);
-  }, []);
-
-  useEffect(() => {
-    const channel = supabase
-      .channel(`partner-live-location-${partner.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "delivery_partners",
-          filter: `id=eq.${partner.id}`,
-        },
-        (payload) => {
-          const nextLat = Number((payload.new as { current_latitude?: number }).current_latitude);
-          const nextLng = Number((payload.new as { current_longitude?: number }).current_longitude);
-          if (isValidCoordinate(nextLat, nextLng)) {
-            setLocation({ lat: nextLat, lng: nextLng });
-            setStatus("Live location updating");
-          }
-        },
-      )
-      .subscribe();
-
+    if (partner.availability === "offline" && !requesting) return;
+    if (!navigator.geolocation) return;
+    // The parent owns uploads. This card displays the same validated device watch;
+    // it must not write approximate readings directly to delivery_partners.
+    const stop = watchGPS(
+      (position) => {
+        if (!usableGPS(position)) {
+          setStatus("Waiting for GPS accuracy within 25 metres…");
+          return;
+        }
+        setLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+        setUpdatedAt(position.timestamp);
+        setStatus("Precise device location received");
+        setRequesting(false);
+      },
+      (error) => {
+        setStatus(
+          error.code === 1
+            ? "Allow precise location in browser and device settings."
+            : "Waiting for a usable GPS reading…",
+        );
+        if (error.code === 1) setRequesting(false);
+      },
+    );
+    const timeout = requesting
+      ? setTimeout(() => {
+          setRequesting(false);
+          setStatus("Precise location unavailable. Enable precise location and retry.");
+        }, 20000)
+      : undefined;
     return () => {
-      void supabase.removeChannel(channel);
+      stop();
+      clearTimeout(timeout);
     };
-  }, [partner.id]);
+  }, [partner.id, partner.availability, requesting]);
+
+  useEffect(() => {
+    if (updatedAt === null) return;
+    const timeout = setTimeout(
+      () => {
+        setLocation(null);
+        setUpdatedAt(null);
+        setAddressName(null);
+        setStatus("GPS reading expired. Waiting for a fresh precise location…");
+      },
+      Math.max(0, MAX_LOCATION_AGE_MS - (Date.now() - updatedAt)),
+    );
+    return () => clearTimeout(timeout);
+  }, [updatedAt]);
+
+  useEffect(() => {
+    setAddressName(null);
+    if (!location) return;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    void fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.lat}&lon=${location.lng}&zoom=16`,
+      { signal: controller.signal },
+    )
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!controller.signal.aborted && typeof data?.display_name === "string")
+          setAddressName(data.display_name.split(",").slice(0, 3).join(", "));
+      })
+      .catch(() => {})
+      .finally(() => clearTimeout(timeout));
+    return () => {
+      controller.abort();
+      clearTimeout(timeout);
+    };
+  }, [location?.lat, location?.lng]);
 
   return (
     <Card className="overflow-hidden border-border/80 shadow-soft">
@@ -262,7 +174,7 @@ function LiveLocationCard({
           </Button>
           <span className="flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
             <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-            {partner.availability === "online" ? "Live" : "Offline"}
+            {partner.availability === "online" ? (location ? "Live" : "Waiting for GPS") : "Offline"}
           </span>
         </div>
       </CardHeader>

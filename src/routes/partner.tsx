@@ -311,8 +311,7 @@ function PartnerLayout() {
       return Promise.resolve(false);
     }
 
-    // High-accuracy GPS can time out on desktops and indoors. Fall back to
-    // the browser/network location so an online partner can still be found.
+    // Retry a timeout with high accuracy still required; never downgrade the request.
     return new Promise((resolve) => {
       const submit = (position: GeolocationPosition) => {
         void submitPosition(position).then(resolve);
@@ -329,7 +328,7 @@ function PartnerLayout() {
             handlePositionError(fallbackError);
             resolve(false);
           },
-          { enableHighAccuracy: false, maximumAge: 0, timeout: 30_000 },
+          { enableHighAccuracy: true, maximumAge: 0, timeout: 30_000 },
         );
       };
       navigator.geolocation.getCurrentPosition(submit, fallback, {
