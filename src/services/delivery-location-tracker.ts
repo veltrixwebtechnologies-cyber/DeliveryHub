@@ -92,9 +92,9 @@ class DeliveryLocationTracker {
         console.warn("[GPS Tracker] Geolocation error:", msg, `(code ${err.code})`);
       },
       {
-        enableHighAccuracy: false,
-        timeout: 30_000,
-        maximumAge: 10_000,
+        enableHighAccuracy: true,
+        timeout: 15_000,
+        maximumAge: 2_000,
       },
     );
   }
@@ -178,7 +178,8 @@ class DeliveryLocationTracker {
           _longitude: update.longitude,
           _heading: update.heading,
           _speed: update.speed,
-        });
+          _captured_at: new Date(update.timestamp).toISOString(),
+        } as any);
         if (error) throw error;
       } else {
         await supabase.rpc("submit_partner_location", {
@@ -198,15 +199,28 @@ class DeliveryLocationTracker {
 
   public async flushOfflineQueue() {
     if (this.isProcessingQueue || !navigator.onLine) return;
-    const queue = getOfflineQueue();
-    if (queue.length === 0) return;
+    const rawQueue = getOfflineQueue();
+    if (rawQueue.length === 0) return;
+
+    const now = Date.now();
+    // Filter out items older than 10 minutes and sort chronologically by timestamp
+    const validQueue = rawQueue
+      .filter((item) => now - item.timestamp <= 600_000)
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    if (validQueue.length === 0) {
+      saveOfflineQueue([]);
+      return;
+    }
 
     this.isProcessingQueue = true;
-    console.info(`[GPS Tracker] Flushing ${queue.length} queued offline updates...`);
+    console.info(
+      `[GPS Tracker] Flushing ${validQueue.length} queued offline updates in chronological order...`,
+    );
 
     const remaining: QueuedLocationUpdate[] = [];
 
-    for (const item of queue) {
+    for (const item of validQueue) {
       try {
         if (item.assignmentId) {
           await supabase.rpc("update_delivery_location", {
@@ -215,6 +229,14 @@ class DeliveryLocationTracker {
             _longitude: item.longitude,
             _heading: item.heading,
             _speed: item.speed,
+            _captured_at: new Date(item.timestamp).toISOString(),
+          } as any);
+        } else {
+          await supabase.rpc("submit_partner_location", {
+            _latitude: item.latitude,
+            _longitude: item.longitude,
+            _accuracy_m: null,
+            _captured_at: new Date(item.timestamp).toISOString(),
           });
         }
       } catch {

@@ -49,23 +49,23 @@ Local Shore Delivery Partner Hub is the delivery-operations app for the LocalSho
 
 ## Roles and routes
 
-| Route | Audience | Purpose |
-| --- | --- | --- |
-| \`/\` | Everyone | Landing and onboarding entry point. |
-| \`/auth\` | Partners | Sign in or create an account. |
-| \`/register\` | Partners | Complete or update partner registration. |
-| \`/partner\` | Partners | Dashboard, availability switch, and incoming delivery requests. |
-| \`/partner/deliveries\` | Partners | Active delivery workflow, route, proof, and history. |
-| \`/partner/earnings\` | Partners | Earnings ledger and payout history. |
-| \`/partner/documents\` | Partners | Document uploads and verification state. |
-| \`/vendor\` | Vendor users | Ready orders and delivery dispatch. |
-| \`/admin\` | Admin users | Partner, document, delivery, and payout operations. |
+| Route                   | Audience     | Purpose                                                         |
+| ----------------------- | ------------ | --------------------------------------------------------------- |
+| \`/\`                   | Everyone     | Landing and onboarding entry point.                             |
+| \`/auth\`               | Partners     | Sign in or create an account.                                   |
+| \`/register\`           | Partners     | Complete or update partner registration.                        |
+| \`/partner\`            | Partners     | Dashboard, availability switch, and incoming delivery requests. |
+| \`/partner/deliveries\` | Partners     | Active delivery workflow, route, proof, and history.            |
+| \`/partner/earnings\`   | Partners     | Earnings ledger and payout history.                             |
+| \`/partner/documents\`  | Partners     | Document uploads and verification state.                        |
+| \`/vendor\`             | Vendor users | Ready orders and delivery dispatch.                             |
+| \`/admin\`              | Admin users  | Partner, document, delivery, and payout operations.             |
 
 Route visibility is a convenience only. Supabase Row Level Security (RLS) policies and authenticated RPCs are the access-control boundary.
 
 ## Delivery lifecycle
 
-~~~text
+```text
 Customer places an order
   → Vendor prepares it and marks it ready for pickup
   → Backend selects a nearby eligible online partner
@@ -76,7 +76,7 @@ Customer places an order
   → picked_up
   → out_for_delivery
   → delivered
-~~~
+```
 
 Rules enforced by the backend:
 
@@ -115,15 +115,15 @@ If a fresh location cannot be saved, order acceptance pauses and tells the rider
 
 ## Architecture
 
-| Area | Implementation |
-| --- | --- |
-| Front end | React 19, TypeScript, Vite, TanStack Start/Router |
-| UI | Tailwind CSS, Radix UI, Lucide, Sonner |
-| Backend | Supabase Auth, Postgres, RLS, Realtime, Storage, RPCs |
-| Maps | OpenStreetMap embeds and directions links |
-| Deployment build | Cloudflare-compatible Nitro output |
+| Area             | Implementation                                        |
+| ---------------- | ----------------------------------------------------- |
+| Front end        | React 19, TypeScript, Vite, TanStack Start/Router     |
+| UI               | Tailwind CSS, Radix UI, Lucide, Sonner                |
+| Backend          | Supabase Auth, Postgres, RLS, Realtime, Storage, RPCs |
+| Maps             | OpenStreetMap embeds and directions links             |
+| Deployment build | Cloudflare-compatible Nitro output                    |
 
-~~~text
+```text
 src/
   components/delivery/       Delivery shell, maps, statuses, statistics
   components/ui/             Shared UI primitives
@@ -133,7 +133,7 @@ src/
   lib/shared-orders.ts       Shared marketplace order normalization
   routes/                    Partner, vendor, and admin routes
   styles.css                 Global styles
-~~~
+```
 
 Key files:
 
@@ -156,17 +156,17 @@ Key files:
 
 1. Install packages:
 
-   ~~~bash
+   ```bash
    npm install
-   ~~~
+   ```
 
 2. Create \`.env\` using the values in the next section. Use the same Supabase project as \`ShorelineShopper\` and \`SellerHub\`.
 
 3. Start development:
 
-   ~~~bash
+   ```bash
    npm run dev
-   ~~~
+   ```
 
 4. Open the Vite URL. \`localhost\` can use browser geolocation without HTTPS.
 
@@ -176,25 +176,25 @@ Key files:
 
 Never commit real credentials or a service-role key.
 
-| Variable | Required | Description |
-| --- | --- | --- |
-| \`VITE_SUPABASE_URL\` | Yes | Shared Supabase URL used by the browser. |
-| \`VITE_SUPABASE_PUBLISHABLE_KEY\` | Yes | Shared Supabase publishable/anon key used by the browser. |
-| \`VITE_SUPABASE_PROJECT_ID\` | Recommended | Shared project ID for tooling. |
-| \`SUPABASE_URL\` | Server use | Same URL without the \`VITE_\` prefix. |
-| \`SUPABASE_PUBLISHABLE_KEY\` | Server use | Same publishable key without the \`VITE_\` prefix. |
-| \`SUPABASE_PROJECT_ID\` | Recommended | Same project ID without the \`VITE_\` prefix. |
+| Variable                          | Required    | Description                                               |
+| --------------------------------- | ----------- | --------------------------------------------------------- |
+| \`VITE_SUPABASE_URL\`             | Yes         | Shared Supabase URL used by the browser.                  |
+| \`VITE_SUPABASE_PUBLISHABLE_KEY\` | Yes         | Shared Supabase publishable/anon key used by the browser. |
+| \`VITE_SUPABASE_PROJECT_ID\`      | Recommended | Shared project ID for tooling.                            |
+| \`SUPABASE_URL\`                  | Server use  | Same URL without the \`VITE_\` prefix.                    |
+| \`SUPABASE_PUBLISHABLE_KEY\`      | Server use  | Same publishable key without the \`VITE_\` prefix.        |
+| \`SUPABASE_PROJECT_ID\`           | Recommended | Same project ID without the \`VITE_\` prefix.             |
 
 Example placeholders:
 
-~~~dotenv
+```dotenv
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 VITE_SUPABASE_PROJECT_ID=your-project-id
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 SUPABASE_PROJECT_ID=your-project-id
-~~~
+```
 
 Never put a Supabase \`service_role\` key in a \`VITE_*\` value.
 
@@ -204,9 +204,9 @@ Never put a Supabase \`service_role\` key in a \`VITE_*\` value.
 
 The shared delivery backend is maintained in:
 
-~~~text
+```text
 ../SellerHub/supabase/migrations/
-~~~
+```
 
 Begin with \`20260801090000_delivery_partner_shared_integration.sql\`, then apply later delivery migrations in timestamp order. They define delivery tables, RLS, storage policies, dispatch, acceptance, location updates, status transitions, completion, and Realtime.
 
@@ -225,17 +225,17 @@ For backend work:
 
 ### Core entities
 
-| Entity | Responsibility |
-| --- | --- |
-| \`delivery_partners\` | Profile, approval, availability, current location, and performance totals. |
-| \`delivery_documents\` | Verification documents and review state. |
-| \`delivery_assignments\` | Requests and active delivery state. |
-| \`delivery_tracking\` | Status timeline events. |
-| \`delivery_locations\` | Time-stamped location points, optionally tied to an assignment. |
-| \`delivery_earnings\` | Completed-delivery earnings ledger. |
-| \`delivery_payouts\` | Settlement records. |
-| \`delivery_notifications\` | Partner notifications. |
-| \`orders\` | Shared marketplace orders, delivery coordinates, and assigned partner. |
+| Entity                     | Responsibility                                                             |
+| -------------------------- | -------------------------------------------------------------------------- |
+| \`delivery_partners\`      | Profile, approval, availability, current location, and performance totals. |
+| \`delivery_documents\`     | Verification documents and review state.                                   |
+| \`delivery_assignments\`   | Requests and active delivery state.                                        |
+| \`delivery_tracking\`      | Status timeline events.                                                    |
+| \`delivery_locations\`     | Time-stamped location points, optionally tied to an assignment.            |
+| \`delivery_earnings\`      | Completed-delivery earnings ledger.                                        |
+| \`delivery_payouts\`       | Settlement records.                                                        |
+| \`delivery_notifications\` | Partner notifications.                                                     |
+| \`orders\`                 | Shared marketplace orders, delivery coordinates, and assigned partner.     |
 
 ## Storage
 
@@ -249,21 +249,21 @@ The private \`delivery-docs\` Supabase bucket stores partner documents and deliv
 
 ## Commands
 
-| Command | Purpose |
-| --- | --- |
-| \`npm run dev\` | Start development server. |
-| \`npm run build\` | Build production client/server artifacts. |
-| \`npm run build:dev\` | Build in Vite development mode. |
-| \`npm run preview\` | Preview a completed build. |
-| \`npm run lint\` | Run ESLint. |
-| \`npm run format\` | Format the repository with Prettier. Review its full diff before committing. |
+| Command               | Purpose                                                                      |
+| --------------------- | ---------------------------------------------------------------------------- |
+| \`npm run dev\`       | Start development server.                                                    |
+| \`npm run build\`     | Build production client/server artifacts.                                    |
+| \`npm run build:dev\` | Build in Vite development mode.                                              |
+| \`npm run preview\`   | Preview a completed build.                                                   |
+| \`npm run lint\`      | Run ESLint.                                                                  |
+| \`npm run format\`    | Format the repository with Prettier. Review its full diff before committing. |
 
 Before handoff, run:
 
-~~~bash
+```bash
 npm run build
 git diff --check
-~~~
+```
 
 ## Testing
 
@@ -312,17 +312,17 @@ Production location requires HTTPS. Use labeled test accounts/orders in staging 
 
 ## Troubleshooting
 
-| Symptom | Check |
-| --- | --- |
-| Cannot turn online | Partner approval status, RLS update response, and session role. |
-| No delivery request | Permission, fresh \`location_updated_at\`, availability, eligible order, assignment expiry, and dispatch result. |
-| Accept shows location error | HTTPS, permission, device GPS, connectivity, and \`submit_partner_location\` RPC response. |
-| Route begins in wrong place | Fresh accept-location update, stored partner latitude/longitude, and precise-location setting. |
+| Symptom                         | Check                                                                                                                         |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Cannot turn online              | Partner approval status, RLS update response, and session role.                                                               |
+| No delivery request             | Permission, fresh \`location_updated_at\`, availability, eligible order, assignment expiry, and dispatch result.              |
+| Accept shows location error     | HTTPS, permission, device GPS, connectivity, and \`submit_partner_location\` RPC response.                                    |
+| Route begins in wrong place     | Fresh accept-location update, stored partner latitude/longitude, and precise-location setting.                                |
 | Tracking stops after acceptance | Browser background/battery limits, location permission, \`busy\` availability support, and current shared location migration. |
-| Vendor cannot dispatch | Seller ownership, order status, eligible partners, and dispatch RPC output. |
-| Status will not progress | Assignment ownership, current state, and \`advance_delivery_assignment\` error. |
-| Completion fails | OTP, proof upload, private bucket policy, and assignment state. |
-| Admin sees no data | \`user_roles\`, RLS policies, and Realtime configuration. |
+| Vendor cannot dispatch          | Seller ownership, order status, eligible partners, and dispatch RPC output.                                                   |
+| Status will not progress        | Assignment ownership, current state, and \`advance_delivery_assignment\` error.                                               |
+| Completion fails                | OTP, proof upload, private bucket policy, and assignment state.                                                               |
+| Admin sees no data              | \`user_roles\`, RLS policies, and Realtime configuration.                                                                     |
 
 For production diagnosis, record route, authenticated role, order ID, assignment ID, timestamp, console error, and RPC/network response. Never include secrets, tokens, OTPs, identity/bank numbers, customer phone numbers, or raw location history in tickets.
 

@@ -204,6 +204,26 @@ export function DeliveryNavigationScreen({
               {nav.route.formattedDuration} · {nav.route.formattedDistance}
             </span>
           )}
+          {(import.meta.env.DEV ||
+            (typeof window !== "undefined" &&
+              (window.location.hostname === "localhost" ||
+                window.location.hostname === "127.0.0.1"))) && (
+            <button
+              type="button"
+              onClick={async () => {
+                const { devSimulator } = await import("@/services/dev-location-simulator");
+                if (devSimulator.isRunning()) {
+                  devSimulator.stop();
+                } else if (active?.id) {
+                  devSimulator.start({ assignmentId: active.id, intervalMs: 2500, speedKmh: 35 });
+                }
+              }}
+              className="rounded-full bg-purple-600 hover:bg-purple-500 text-white px-2.5 py-0.5 text-[11px] font-bold shadow-xs active:scale-95 transition-all"
+              title="Simulate driver movement along route (DEV TEST ONLY)"
+            >
+              ⚡ DEV SIM
+            </button>
+          )}
         </div>
       </div>
 

@@ -568,9 +568,9 @@ export function useDriverNavigation({
         }));
       },
       {
-        enableHighAccuracy: false,
-        timeout: 30_000,
-        maximumAge: 10_000,
+        enableHighAccuracy: true,
+        timeout: 15_000,
+        maximumAge: 2_000,
       },
     );
 

@@ -14,7 +14,7 @@ let redisInstance: Redis | null = null;
 export function getRedisClient(): Redis | null {
   if (redisInstance) return redisInstance;
 
-  const redisUrl = process.env.REDIS_URL;
+  const redisUrl = process.env["REDIS_URL"];
   if (!redisUrl) return null;
 
   try {

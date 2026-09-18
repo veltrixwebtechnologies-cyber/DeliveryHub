@@ -29,17 +29,17 @@ SellerDashboard
 Create these services under `src/services/` as each module is connected:
 
 ```ts
-SellerDashboardService.getSummary({ sellerId, range })
-SellerOrderService.list({ sellerId, status, search, cursor, limit })
-SellerOrderService.advance(orderId, idempotencyKey)
-ProductService.list({ sellerId, state, search, cursor, limit })
-ProductService.bulkUpdate(productIds, patch, idempotencyKey)
-InventoryService.listAlerts({ sellerId, type })
-PromotionService.create(input, idempotencyKey)
-ReturnService.list({ sellerId, status, cursor, limit })
-SettlementService.list({ sellerId, cursor, limit })
-ReviewService.list({ sellerId, rating, replied, cursor, limit })
-NotificationService.list({ sellerId, unreadOnly, cursor, limit })
+SellerDashboardService.getSummary({ sellerId, range });
+SellerOrderService.list({ sellerId, status, search, cursor, limit });
+SellerOrderService.advance(orderId, idempotencyKey);
+ProductService.list({ sellerId, state, search, cursor, limit });
+ProductService.bulkUpdate(productIds, patch, idempotencyKey);
+InventoryService.listAlerts({ sellerId, type });
+PromotionService.create(input, idempotencyKey);
+ReturnService.list({ sellerId, status, cursor, limit });
+SettlementService.list({ sellerId, cursor, limit });
+ReviewService.list({ sellerId, rating, replied, cursor, limit });
+NotificationService.list({ sellerId, unreadOnly, cursor, limit });
 ```
 
 Mutation endpoints/RPCs must authorize the seller server-side and return the
