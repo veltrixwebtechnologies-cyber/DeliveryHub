@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Bike, Check, Eye, EyeOff, Loader2, Upload } from "lucide-react";
+import { ArrowLeft, Bike, Check, Eye, EyeOff, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -75,6 +75,7 @@ const AUTOSAVE_FIELDS = [
   "vehicle_brand",
   "vehicle_model",
   "vehicle_color",
+  "insurance_expiry",
   "licence_number",
   "licence_expiry",
   "aadhaar_number",
@@ -87,7 +88,26 @@ const AUTOSAVE_FIELDS = [
   "employment_type",
 ] as const;
 
-const DATE_FIELDS = new Set(["date_of_birth", "licence_expiry"]);
+const DATE_FIELDS = new Set(["date_of_birth", "licence_expiry", "insurance_expiry"]);
+
+function isValidIndianMobile(value: string) {
+  return /^[6-9]\d{9}$/.test(value.replace(/\D/g, ""));
+}
+
+function isValidAdultDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime()) || date > new Date()) return false;
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 18);
+  return date <= cutoff;
+}
+
+function isFutureDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T23:59:59`);
+  return Number.isFinite(date.getTime()) && date.getTime() > Date.now();
+}
 
 function draftPayload(form: Record<string, string>) {
   const payload: Record<string, unknown> = {};
@@ -257,6 +277,37 @@ function RegisterPage() {
   }
 
   const hasDoc = (t: string) => docs.some((d) => d.doc_type === t);
+  const hasValue = (...keys: string[]) => keys.every((key) => Boolean(form[key]?.trim()));
+  const validStep2 =
+    hasDoc("profile_photo") &&
+    hasValue("gender", "emergency_contact_name") &&
+    isValidAdultDate(form["date_of_birth"] ?? "") &&
+    isValidIndianMobile(form["emergency_contact_number"] ?? "");
+  const validStep3 = hasValue("house_number", "street", "area", "city", "state", "pincode");
+  const validStep4 =
+    hasValue("vehicle_type", "vehicle_brand", "vehicle_model", "vehicle_color") &&
+    (isBicycle
+      ? hasDoc("vehicle_photo")
+      : hasValue("vehicle_number") &&
+        isFutureDate(form["insurance_expiry"] ?? "") &&
+        hasDoc("rc") &&
+        hasDoc("insurance") &&
+        hasDoc("vehicle_photo"));
+  const validStep5 =
+    isBicycle || (hasValue("licence_number", "licence_expiry") && hasDoc("licence"));
+  const validStep6 =
+    /^\d{12}$/.test(form["aadhaar_number"] ?? "") &&
+    /^[A-Z]{5}\d{4}[A-Z]$/.test(form["pan_number"] ?? "") &&
+    hasDoc("aadhaar_front") &&
+    hasDoc("aadhaar_back") &&
+    hasDoc("pan");
+  const validStep7 = hasValue(
+    "bank_account_holder",
+    "bank_name",
+    "bank_account_number",
+    "bank_ifsc",
+    "upi_id",
+  );
 
   if (loading) {
     return (
@@ -270,12 +321,26 @@ function RegisterPage() {
   return (
     <div className="min-h-screen bg-secondary/40 px-4 py-10">
       <div className="mx-auto max-w-2xl">
-        <Link to="/" className="mb-6 flex items-center justify-center gap-2">
-          <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-primary-foreground">
-            <Bike className="h-5 w-5" />
-          </span>
-          <span className="font-semibold text-foreground">Local Shore Partners</span>
-        </Link>
+        <div className="relative mb-6 flex items-center justify-center">
+          <button
+            type="button"
+            aria-label={step > 1 ? "Go to previous step" : "Back to partner home"}
+            disabled={busy}
+            onClick={() => {
+              if (step > 1) setStep((current) => current - 1);
+              else navigate({ to: "/" });
+            }}
+            className="absolute left-0 grid h-9 w-9 place-items-center rounded-full border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:bg-secondary hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <Link to="/" className="flex items-center justify-center gap-2">
+            <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-primary-foreground">
+              <Bike className="h-5 w-5" />
+            </span>
+            <span className="font-semibold text-foreground">Local Shore Partners</span>
+          </Link>
+        </div>
 
         <div className="mb-4">
           <div className="flex items-center justify-between text-sm">
@@ -340,9 +405,15 @@ function RegisterPage() {
                 <Field label="Date of birth">
                   <Input
                     type="date"
+                    max={new Date(new Date().setFullYear(new Date().getFullYear() - 18))
+                      .toISOString()
+                      .slice(0, 10)}
                     value={form["date_of_birth"] ?? ""}
                     onChange={(e) => set("date_of_birth", e.target.value)}
                   />
+                  {form["date_of_birth"] && !isValidAdultDate(form["date_of_birth"]) ? (
+                    <p className="text-xs text-destructive">You must be at least 18 years old.</p>
+                  ) : null}
                 </Field>
                 <Field label="Gender">
                   <Select value={form["gender"] ?? ""} onValueChange={(v) => set("gender", v)}>
@@ -364,12 +435,23 @@ function RegisterPage() {
                 </Field>
                 <Field label="Emergency contact number">
                   <Input
+                    inputMode="numeric"
+                    maxLength={10}
                     value={form["emergency_contact_number"] ?? ""}
-                    onChange={(e) => set("emergency_contact_number", e.target.value)}
+                    onChange={(e) =>
+                      set("emergency_contact_number", e.target.value.replace(/\D/g, ""))
+                    }
                   />
+                  {form["emergency_contact_number"] &&
+                  !isValidIndianMobile(form["emergency_contact_number"]) ? (
+                    <p className="text-xs text-destructive">
+                      Enter a valid 10-digit Indian mobile number.
+                    </p>
+                  ) : null}
                 </Field>
                 <Nav
                   busy={busy}
+                  disabled={!validStep2}
                   onBack={() => setStep(1)}
                   onNext={() =>
                     savePartner(
@@ -402,6 +484,7 @@ function RegisterPage() {
                 ))}
                 <Nav
                   busy={busy}
+                  disabled={!validStep3}
                   onBack={() => setStep(2)}
                   onNext={() =>
                     savePartner(
@@ -444,6 +527,9 @@ function RegisterPage() {
                     value={form["vehicle_number"] ?? ""}
                     onChange={(e) => set("vehicle_number", e.target.value)}
                   />
+                  {!isBicycle && !form["vehicle_number"]?.trim() ? (
+                    <p className="text-xs text-destructive">Vehicle number is required.</p>
+                  ) : null}
                 </Field>
                 <div className="grid gap-4 sm:grid-cols-3">
                   <Field label="Brand">
@@ -451,18 +537,27 @@ function RegisterPage() {
                       value={form["vehicle_brand"] ?? ""}
                       onChange={(e) => set("vehicle_brand", e.target.value)}
                     />
+                    {!form["vehicle_brand"]?.trim() ? (
+                      <p className="text-xs text-destructive">Brand is required.</p>
+                    ) : null}
                   </Field>
                   <Field label="Model">
                     <Input
                       value={form["vehicle_model"] ?? ""}
                       onChange={(e) => set("vehicle_model", e.target.value)}
                     />
+                    {!form["vehicle_model"]?.trim() ? (
+                      <p className="text-xs text-destructive">Model is required.</p>
+                    ) : null}
                   </Field>
                   <Field label="Colour">
                     <Input
                       value={form["vehicle_color"] ?? ""}
                       onChange={(e) => set("vehicle_color", e.target.value)}
                     />
+                    {!form["vehicle_color"]?.trim() ? (
+                      <p className="text-xs text-destructive">Colour is required.</p>
+                    ) : null}
                   </Field>
                 </div>
                 {!isBicycle ? (
@@ -483,9 +578,15 @@ function RegisterPage() {
                       <Input
                         className="mt-2"
                         type="date"
+                        min={new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)}
                         value={form["insurance_expiry"] ?? ""}
                         onChange={(e) => set("insurance_expiry", e.target.value)}
                       />
+                      {form["insurance_expiry"] && !isFutureDate(form["insurance_expiry"]) ? (
+                        <p className="text-xs text-destructive">
+                          Insurance expiry must be a future date.
+                        </p>
+                      ) : null}
                     </Field>
                   </>
                 ) : (
@@ -503,7 +604,7 @@ function RegisterPage() {
                 <Nav
                   busy={busy}
                   onBack={() => setStep(3)}
-                  disabled={!form["vehicle_type"]}
+                  disabled={!validStep4}
                   onNext={() =>
                     savePartner(
                       {
@@ -554,6 +655,7 @@ function RegisterPage() {
                 <Nav
                   busy={busy}
                   onBack={() => setStep(4)}
+                  disabled={!validStep5}
                   onNext={() =>
                     savePartner(
                       isBicycle
@@ -606,7 +708,7 @@ function RegisterPage() {
                 <Nav
                   busy={busy}
                   onBack={() => setStep(5)}
-                  disabled={(form["aadhaar_number"] ?? "").length !== 12 || !form["pan_number"]}
+                  disabled={!validStep6}
                   onNext={() =>
                     savePartner(
                       {
@@ -636,7 +738,7 @@ function RegisterPage() {
                 <Nav
                   busy={busy}
                   onBack={() => setStep(6)}
-                  disabled={!form["bank_account_number"] || !form["bank_ifsc"]}
+                  disabled={!validStep7}
                   onNext={() =>
                     savePartner(
                       {
@@ -683,16 +785,24 @@ function RegisterPage() {
                   disabled={selectedZones.length === 0}
                   onNext={async () => {
                     setBusy(true);
-                    await db
+                    const { error: deleteError } = await db
                       .from("delivery_partner_zones")
                       .delete()
                       .eq("partner_id", partner!["id"]);
-                    await db
+                    const { error: insertError } = await db
                       .from("delivery_partner_zones")
                       .insert(
                         selectedZones.map((z) => ({ partner_id: partner!["id"], zone_id: z })),
                       );
                     setBusy(false);
+                    if (deleteError || insertError) {
+                      toast.error(
+                        deleteError?.message ??
+                          insertError?.message ??
+                          "Could not save preferred zones.",
+                      );
+                      return;
+                    }
                     savePartner({}, 9);
                   }}
                 />
@@ -745,11 +855,22 @@ function RegisterPage() {
                   disabled={!form["employment_type"] || selectedShifts.length === 0}
                   onNext={async () => {
                     setBusy(true);
-                    await db.from("delivery_shifts").delete().eq("partner_id", partner!["id"]);
-                    await db
+                    const { error: deleteError } = await db
+                      .from("delivery_shifts")
+                      .delete()
+                      .eq("partner_id", partner!["id"]);
+                    const { error: insertError } = await db
                       .from("delivery_shifts")
                       .insert(selectedShifts.map((s) => ({ partner_id: partner!["id"], slot: s })));
                     setBusy(false);
+                    if (deleteError || insertError) {
+                      toast.error(
+                        deleteError?.message ??
+                          insertError?.message ??
+                          "Could not save working preferences.",
+                      );
+                      return;
+                    }
                     savePartner({ employment_type: form["employment_type"] }, 10);
                   }}
                 />
@@ -842,6 +963,9 @@ function StepAccount({
   onDone: (p: Record<string, any>) => void;
 }) {
   const [showPassword, setShowPassword] = useState(false);
+  const [verificationPending, setVerificationPending] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [verifiedEmail, setVerifiedEmail] = useState("");
   const [values, setValues] = useState({
     ["full_name"]: currentUserName ?? "",
     mobile: "",
@@ -857,6 +981,29 @@ function StepAccount({
       (Boolean(currentUserId) || values.password.length >= 8),
     [values, currentUserId],
   );
+
+  async function createPartner(userId: string, email: string) {
+    const { data: p, error: pErr } = await db
+      .from("delivery_partners")
+      .insert({
+        user_id: userId,
+        ["full_name"]: values["full_name"].trim(),
+        mobile: values.mobile.trim(),
+        email,
+        mobile_verified: false,
+        email_verified: true,
+        registration_step: 2,
+      })
+      .select("*")
+      .single();
+    setBusy(false);
+    if (pErr) {
+      toast.error(pErr.message);
+      return;
+    }
+    toast.success("Email verified and account created");
+    onDone(p);
+  }
 
   async function createAccount() {
     setBusy(true);
@@ -879,27 +1026,34 @@ function StepAccount({
         return;
       }
       userId = data.user.id;
+      if (!data.session) {
+        setVerifiedEmail(values.email.trim());
+        setVerificationPending(true);
+        setBusy(false);
+        toast.success("Verification code sent. Check your email to continue.");
+        return;
+      }
     }
-    const { data: p, error: pErr } = await db
-      .from("delivery_partners")
-      .insert({
-        user_id: userId,
-        ["full_name"]: values["full_name"].trim(),
-        mobile: values.mobile.trim(),
-        email: values.email.trim(),
-        mobile_verified: false,
-        email_verified: Boolean(currentUserId),
-        registration_step: 2,
-      })
-      .select("*")
-      .single();
-    setBusy(false);
-    if (pErr) {
-      toast.error(pErr.message);
+    await createPartner(userId, values.email.trim());
+  }
+
+  async function verifyEmail() {
+    if (!verifiedEmail || !/^\d{6}$/.test(otp.trim())) {
+      toast.error("Enter the 6-digit verification code from your email");
       return;
     }
-    toast.success("Account created");
-    onDone(p);
+    setBusy(true);
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: verifiedEmail,
+      token: otp.trim(),
+      type: "signup",
+    });
+    if (error || !data.user) {
+      setBusy(false);
+      toast.error(error?.message ?? "That verification code is invalid or expired");
+      return;
+    }
+    await createPartner(data.user.id, verifiedEmail);
   }
 
   if (existingUser) {
@@ -911,6 +1065,42 @@ function StepAccount({
         <Button asChild>
           <Link to="/partner">Go to dashboard</Link>
         </Button>
+      </div>
+    );
+  }
+
+  if (verificationPending) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">Verify your email</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            We sent a 6-digit code to <strong>{verifiedEmail}</strong>. Enter it to continue.
+          </p>
+        </div>
+        <Field label="Email verification code">
+          <Input
+            inputMode="numeric"
+            maxLength={6}
+            value={otp}
+            onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+            placeholder="123456"
+          />
+        </Field>
+        <Button className="w-full" disabled={!/^\d{6}$/.test(otp) || busy} onClick={verifyEmail}>
+          {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          Verify email and continue
+        </Button>
+        <button
+          type="button"
+          className="w-full text-sm font-medium text-primary hover:underline"
+          onClick={() => {
+            setVerificationPending(false);
+            setOtp("");
+          }}
+        >
+          Change email address
+        </button>
       </div>
     );
   }
