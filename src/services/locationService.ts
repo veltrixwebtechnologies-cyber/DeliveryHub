@@ -13,7 +13,7 @@ export interface LocationService {
 export const locationService: LocationService = {
   async submitCurrentLocation({ latitude, longitude, accuracyM, capturedAt }) {
     const timestamp = capturedAt ?? new Date().toISOString();
-    let rpcSuccess = false;
+    let rpcError: unknown = null;
 
     try {
       const { error } = await supabase.rpc("submit_partner_location", {
@@ -23,11 +23,12 @@ export const locationService: LocationService = {
         _captured_at: timestamp,
       });
       if (!error) {
-        rpcSuccess = true;
       } else {
+        rpcError = error;
         logStructuredError("LocationServiceRPC", error, { latitude, longitude });
       }
     } catch (err) {
+      rpcError = err;
       logStructuredError("LocationServiceNetwork", err, { latitude, longitude });
     }
 
@@ -74,6 +75,10 @@ export const locationService: LocationService = {
       }
     } catch (syncError) {
       console.warn("[LocationService] Location mirror update failed:", syncError);
+    }
+
+    if (rpcError) {
+      throw rpcError;
     }
   },
 };

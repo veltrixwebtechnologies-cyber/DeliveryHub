@@ -50,6 +50,8 @@ function resolveSupabaseUrl(values: Array<string | undefined>): string | undefin
       // Ignore malformed deployment values and try the next configured source.
     }
   }
+
+  return undefined;
 }
 
 function createSupabaseClient() {

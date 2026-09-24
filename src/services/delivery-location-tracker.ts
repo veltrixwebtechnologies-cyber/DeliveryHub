@@ -182,12 +182,13 @@ class DeliveryLocationTracker {
         } as any);
         if (error) throw error;
       } else {
-        await supabase.rpc("submit_partner_location", {
+        const { error } = await supabase.rpc("submit_partner_location", {
           _latitude: update.latitude,
           _longitude: update.longitude,
           _accuracy_m: null,
           _captured_at: new Date(update.timestamp).toISOString(),
         });
+        if (error) throw error;
       }
     } catch (err) {
       console.warn("[GPS Tracker] Location submission failed. Queuing offline.", err);
@@ -232,12 +233,13 @@ class DeliveryLocationTracker {
             _captured_at: new Date(item.timestamp).toISOString(),
           } as any);
         } else {
-          await supabase.rpc("submit_partner_location", {
+          const { error } = await supabase.rpc("submit_partner_location", {
             _latitude: item.latitude,
             _longitude: item.longitude,
             _accuracy_m: null,
             _captured_at: new Date(item.timestamp).toISOString(),
           });
+          if (error) throw error;
         }
       } catch {
         remaining.push(item);
