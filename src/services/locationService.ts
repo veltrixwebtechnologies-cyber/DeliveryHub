@@ -22,8 +22,7 @@ export const locationService: LocationService = {
         _accuracy_m: accuracyM ?? null,
         _captured_at: timestamp,
       });
-      if (!error) {
-      } else {
+      if (error) {
         rpcError = error;
         logStructuredError("LocationServiceRPC", error, { latitude, longitude });
       }
