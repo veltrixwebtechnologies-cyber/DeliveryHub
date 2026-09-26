@@ -708,18 +708,21 @@ export type Database = {
           created_at: string;
           id: string;
           role: Database["public"]["Enums"]["app_role"];
+          status: string;
           user_id: string;
         };
         Insert: {
           created_at?: string;
           id?: string;
           role: Database["public"]["Enums"]["app_role"];
+          status?: string;
           user_id: string;
         };
         Update: {
           created_at?: string;
           id?: string;
           role?: Database["public"]["Enums"]["app_role"];
+          status?: string;
           user_id?: string;
         };
         Relationships: [];
@@ -826,7 +829,7 @@ export type Database = {
       };
     };
     Enums: {
-      app_role: "admin" | "vendor" | "delivery_partner" | "customer";
+      app_role: "admin" | "vendor" | "seller" | "delivery_partner" | "customer";
       assignment_status:
         | "pending"
         | "accepted"
@@ -988,7 +991,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "vendor", "delivery_partner", "customer"],
+      app_role: ["admin", "vendor", "seller", "delivery_partner", "customer"],
       assignment_status: [
         "pending",
         "accepted",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
@@ -31,7 +31,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { db } from "@/lib/db";
 import { useIsAdmin, useSessionUser } from "@/hooks/usePartner";
 import { DOC_LABELS, INR } from "@/lib/delivery";
-import { DELIVERY_ORDER_SELECT, normalizeAssignment } from "@/lib/shared-orders";
+import { normalizeAssignment } from "@/lib/shared-orders";
 
 export const Route = createFileRoute("/admin")({
   ssr: false,
@@ -70,39 +70,67 @@ function AdminPage() {
   const [docs, setDocs] = useState<any[]>([]);
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
+  const loadInFlightRef = useRef(false);
+  const loadTimerRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
-    const [{ data: p }, { data: l }, { data: po }, { data: wr }, { data: ex }] = await Promise.all([
-      db.from("delivery_partners").select("*").order("created_at", { ascending: false }),
-      db
-        .from("delivery_assignments")
-        .select(`*, orders(${DELIVERY_ORDER_SELECT}), delivery_partners(full_name)`)
-        .not("status", "in", "(delivered,cancelled,rejected,expired)")
-        .order("created_at", { ascending: false }),
-      db
-        .from("delivery_payouts")
-        .select("*, delivery_partners(full_name)")
-        .order("created_at", { ascending: false }),
-      db
-        .from("delivery_withdrawal_requests")
-        .select(
-          "id,partner_id,amount,status,requested_at,processed_at,admin_note,delivery_partners(full_name)",
-        )
-        .order("requested_at", { ascending: false })
-        .limit(100),
-      db
-        .from("delivery_exceptions")
-        .select("*, delivery_partners(full_name)")
-        .order("created_at", { ascending: false })
-        .limit(100),
-    ]);
-    setPartners(p ?? []);
-    setLive((l ?? []).map(normalizeAssignment));
-    setPayouts(po ?? []);
-    setWithdrawals(wr ?? []);
-    setExceptions(ex ?? []);
-    setLoading(false);
+    if (loadInFlightRef.current) return;
+    loadInFlightRef.current = true;
+    try {
+      const [{ data: p }, { data: l }, { data: po }, { data: wr }, { data: ex }] = await Promise.all([
+        db
+          .from("delivery_partners")
+          .select(
+            "id,full_name,mobile,email,vehicle_type,vehicle_number,city,aadhaar_number,pan_number,bank_name,bank_ifsc,employment_type,status,availability,admin_note,created_at",
+          )
+          .order("created_at", { ascending: false })
+          .limit(1000),
+        db
+          .from("delivery_assignments")
+          .select(
+            "id,status,created_at,orders(id,order_number,buyer_name,buyer_phone,buyer_address,total,shipping_fee,seller:sellers(shop_name,business_name)),delivery_partners(full_name)",
+          )
+          .not("status", "in", "(delivered,cancelled,rejected,expired)")
+          .order("created_at", { ascending: false })
+          .limit(200),
+        db
+          .from("delivery_payouts")
+          .select("id,period_start,period_end,status,amount,delivery_partners(full_name)")
+          .order("created_at", { ascending: false })
+          .limit(200),
+        db
+          .from("delivery_withdrawal_requests")
+          .select(
+            "id,partner_id,amount,status,requested_at,processed_at,admin_note,delivery_partners(full_name)",
+          )
+          .order("requested_at", { ascending: false })
+          .limit(100),
+        db
+          .from("delivery_exceptions")
+          .select(
+            "id,assignment_id,order_id,partner_id,reason,notes,photo_path,created_by,resolution_status,resolution_note,created_at,updated_at,delivery_partners(full_name)",
+          )
+          .order("created_at", { ascending: false })
+          .limit(100),
+      ]);
+      setPartners(p ?? []);
+      setLive((l ?? []).map(normalizeAssignment));
+      setPayouts(po ?? []);
+      setWithdrawals(wr ?? []);
+      setExceptions(ex ?? []);
+    } finally {
+      loadInFlightRef.current = false;
+      setLoading(false);
+    }
   }, []);
+
+  const scheduleLoad = useCallback(() => {
+    if (loadTimerRef.current !== null) return;
+    loadTimerRef.current = window.setTimeout(() => {
+      loadTimerRef.current = null;
+      void load();
+    }, 350);
+  }, [load]);
 
   useEffect(() => {
     if (user === undefined || isAdmin === undefined) return;
@@ -114,20 +142,21 @@ function AdminPage() {
       navigate({ to: "/partner" });
       return;
     }
-    load();
+    void load();
     const ch = supabase
       .channel("admin-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "delivery_assignments" }, () =>
-        load(),
+        scheduleLoad(),
       )
       .on("postgres_changes", { event: "*", schema: "public", table: "delivery_partners" }, () =>
-        load(),
+        scheduleLoad(),
       )
       .subscribe();
     return () => {
+      if (loadTimerRef.current !== null) window.clearTimeout(loadTimerRef.current);
       supabase.removeChannel(ch);
     };
-  }, [user, isAdmin, navigate, load]);
+  }, [user, isAdmin, navigate, load, scheduleLoad]);
 
   async function openPartner(p: any) {
     setSelected(p);

@@ -25,6 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { db } from "@/lib/db";
 import { usePartner } from "@/hooks/usePartner";
+import { useRoles } from "@/hooks/useRoles";
 import { INR, etaMinutes, PARTNER_STATUS_LABEL, osmDirections } from "@/lib/delivery";
 import { StatusBadge } from "@/components/delivery/StatusBadge";
 import { DELIVERY_ORDER_SELECT, normalizeAssignment } from "@/lib/shared-orders";
@@ -117,6 +118,7 @@ type RequestRow = {
 
 function PartnerLayout() {
   const { partner, user, isLoading: loading, refetch: refresh } = usePartner();
+  const roles = useRoles();
   const navigate = useNavigate();
   const [request, setRequest] = useState<RequestRow | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -370,11 +372,14 @@ function PartnerLayout() {
   }, [partner?.id]);
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || roles.isLoading) return;
     if (!user) navigate({ to: "/auth" });
     else if (!partner) navigate({ to: "/register" });
-    else if (partner.status === "draft") navigate({ to: "/register" });
-  }, [loading, user, partner, navigate]);
+    else if (!roles.hasRole("delivery_partner")) navigate({ to: "/register" });
+    else if (partner.status === "approved" && !roles.hasActiveRole("delivery_partner")) {
+      navigate({ to: "/register" });
+    } else if (partner.status === "draft") navigate({ to: "/register" });
+  }, [loading, roles.isLoading, roles.hasRole, roles.hasActiveRole, user, partner, navigate]);
 
   // Live location while online
   useEffect(() => {

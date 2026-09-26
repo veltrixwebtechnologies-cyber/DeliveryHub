@@ -52,6 +52,8 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { db } from "@/lib/db";
+import { useSessionUser } from "@/hooks/usePartner";
+import { useRoles } from "@/hooks/useRoles";
 import { INR } from "@/lib/delivery";
 import { DELIVERY_ORDER_SELECT, normalizeOrder } from "@/lib/shared-orders";
 
@@ -158,6 +160,9 @@ export const Route = createFileRoute("/vendor")({
 });
 
 function SellerDashboard() {
+  const user = useSessionUser();
+  const roles = useRoles();
+  const navigate = useNavigate();
   const [orders, setOrders] = useState<SellerOrder[]>([]);
   const [sellerName, setSellerName] = useState("Your store");
   const [loading, setLoading] = useState(true);
@@ -198,6 +203,15 @@ function SellerDashboard() {
   }, []);
 
   useEffect(() => {
+    if (user === null) {
+      navigate({ to: "/auth" });
+      return;
+    }
+    if (user && !roles.isLoading && !roles.hasActiveRole("seller")) {
+      navigate({ to: "/partner" });
+      return;
+    }
+    if (!user || roles.isLoading) return;
     void load();
     const channel = supabase
       .channel("seller-orders")
@@ -206,7 +220,7 @@ function SellerDashboard() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [load]);
+  }, [load, navigate, roles.hasActiveRole, roles.isLoading, user]);
 
   const filteredOrders = useMemo(
     () =>

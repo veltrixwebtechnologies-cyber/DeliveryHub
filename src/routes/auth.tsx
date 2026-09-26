@@ -72,7 +72,13 @@ function AuthPage() {
 
   async function routeSignedInUser(userId: string) {
     const [{ data: roleRow }, { data: partner }] = await Promise.all([
-      db.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle(),
+      db
+        .from("user_roles")
+        .select("role,status")
+        .eq("user_id", userId)
+        .eq("role", "admin")
+        .eq("status", "active")
+        .maybeSingle(),
       db
         .from("delivery_partners")
         .select("status,registration_step")
