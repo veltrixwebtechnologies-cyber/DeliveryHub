@@ -1,9 +1,9 @@
 /**
- * LiveNavigationMap — Full-screen Leaflet navigation map for delivery driver
+ * LiveNavigationMap — Full-screen Google Maps navigation map for delivery driver
  *
  * Features:
  * - Real GPS driver position with smooth animation
- * - Road-following OSRM route polyline
+ * - Road-following Google Maps route polyline
  * - Heading-based marker rotation
  * - Follow-driver mode with re-center button
  * - Vendor/Customer destination markers
@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MapLocation, RouteResult } from "@/lib/delivery-routing";
 
-import { getMapTileConfig } from "@/lib/map-provider";
+import { loadGoogleMaps } from "@/lib/google-maps-loader";
 
 interface LiveNavMapProps {
   driverPos: { lat: number; lng: number; heading: number } | null;
@@ -68,16 +68,6 @@ function destinationPinSvg(color: string, emoji: string): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
-function pulseCircleSvg(color: string): string {
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'>
-    <circle cx='30' cy='30' r='28' fill='${color}' opacity='0.15'>
-      <animate attributeName='r' values='15;28;15' dur='2s' repeatCount='indefinite'/>
-      <animate attributeName='opacity' values='0.3;0.08;0.3' dur='2s' repeatCount='indefinite'/>
-    </circle>
-  </svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-
 function isValidLocation(lat: number, lng: number): boolean {
   return (
     Number.isFinite(lat) &&
@@ -110,26 +100,24 @@ export function LiveNavigationMap({
   className,
 }: LiveNavMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<any>(null);
-  const LRef = useRef<any>(null);
-  const markersRef = useRef<Record<string, any>>({});
-  const polylineRef = useRef<any>(null);
-  const pulseRef = useRef<any>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const markersRef = useRef<Record<string, google.maps.Marker>>({});
+  const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const pulseRef = useRef<google.maps.Circle | null>(null);
   const mountedRef = useRef(true);
   const [isUserPanning, setIsUserPanning] = useState(false);
   const [mapReady, setMapReady] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
 
-  // ── Initialize Leaflet map (once) ──
+  // ── Initialize Google Map (once) ──
   useEffect(() => {
     let cancelled = false;
+    mountedRef.current = true;
 
     (async () => {
       try {
-        const L = (await import("leaflet")).default;
-        await import("leaflet/dist/leaflet.css");
+        const googleApi = await loadGoogleMaps();
         if (cancelled || !containerRef.current) return;
-
-        LRef.current = L;
 
         // Start at destination or a visual-only fallback location.
         const center: [number, number] =
@@ -143,37 +131,17 @@ export function LiveNavigationMap({
                   ? [customerLocation.lat, customerLocation.lng]
                   : DEFAULT_VISUAL_CENTER;
 
-        const map = L.map(containerRef.current, {
-          center,
+        const map = new googleApi.maps.Map(containerRef.current, {
+          center: { lat: center[0], lng: center[1] },
           zoom: 16,
-          maxZoom: 19,
-          zoomControl: false,
-          attributionControl: false,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: true,
+          clickableIcons: false,
         });
 
-        // Configurable OpenStreetMap tile layer
-        const tileConfig = getMapTileConfig();
-        L.tileLayer(tileConfig.url, {
-          maxZoom: tileConfig.maxZoom,
-          subdomains: tileConfig.subdomains,
-          attribution: tileConfig.attribution,
-        }).addTo(map);
-
-        // Force Leaflet to recalculate container bounds & request tile grid
-        setTimeout(() => {
-          map.invalidateSize();
-        }, 100);
-
-        // Observe container resizes (flex layout adjustments)
-        if (typeof ResizeObserver !== "undefined") {
-          const ro = new ResizeObserver(() => {
-            map.invalidateSize();
-          });
-          ro.observe(containerRef.current);
-        }
-
         // Detect manual panning
-        map.on("dragstart", () => {
+        map.addListener("dragstart", () => {
           setIsUserPanning(true);
           onMapInteraction?.();
         });
@@ -181,7 +149,10 @@ export function LiveNavigationMap({
         mapRef.current = map;
         setMapReady(true);
       } catch (err) {
-        console.error("[LiveNavMap] Leaflet init error:", err);
+        console.error("[LiveNavMap] Google Maps init error:", err);
+        if (!cancelled) {
+          setMapError(err instanceof Error ? err.message : "Google Maps is unavailable right now.");
+        }
       }
     })();
 
@@ -189,12 +160,15 @@ export function LiveNavigationMap({
       cancelled = true;
       mountedRef.current = false;
       if (mapRef.current) {
-        mapRef.current.remove();
+        google.maps.event.clearInstanceListeners(mapRef.current);
         mapRef.current = null;
       }
+      Object.values(markersRef.current).forEach((marker) => marker.setMap(null));
       markersRef.current = {};
-      polylineRef.current = null;
+      pulseRef.current?.setMap(null);
       pulseRef.current = null;
+      polylineRef.current?.setMap(null);
+      polylineRef.current = null;
     };
   }, []);
 
@@ -208,36 +182,48 @@ export function LiveNavigationMap({
       anchor?: [number, number],
     ) => {
       const map = mapRef.current;
-      const L = LRef.current;
-      if (!map || !L) return;
+      if (!map) return;
 
       if (!pos) {
         if (markersRef.current[id]) {
-          map.removeLayer(markersRef.current[id]);
+          markersRef.current[id].setMap(null);
           delete markersRef.current[id];
         }
         return;
       }
 
-      const icon = L.icon({
-        iconUrl,
-        iconSize: size,
-        iconAnchor: anchor || [size[0] / 2, size[1] / 2],
-      });
+      const [width, height] = size;
+      const [anchorX, anchorY] = anchor || [width / 2, height / 2];
+      const icon: google.maps.Icon = {
+        url: iconUrl,
+        scaledSize: new google.maps.Size(width, height),
+        anchor: new google.maps.Point(anchorX, anchorY),
+      };
 
       let marker = markersRef.current[id];
       if (!marker) {
-        marker = L.marker([pos.lat, pos.lng], {
+        marker = new google.maps.Marker({
+          position: pos,
+          title:
+            id === "driver"
+              ? "Delivery partner"
+              : id === "vendor"
+                ? "Pickup shop"
+                : "Delivery location",
           icon,
-          zIndexOffset: id === "driver" ? 1000 : 500,
-        }).addTo(map);
+          map,
+          zIndex: id === "driver" ? 1000 : 500,
+        });
         markersRef.current[id] = marker;
       } else {
-        marker.setIcon(icon);
-
+        const existingMarker = marker;
+        existingMarker.setIcon(icon);
         // Smooth animation for driver marker
         if (id === "driver") {
-          const startLL = marker.getLatLng();
+          const startLL = existingMarker.getPosition();
+          if (!startLL) return;
+          const startLat = startLL.lat();
+          const startLng = startLL.lng();
           const startTime = performance.now();
           const duration = 500;
 
@@ -245,15 +231,15 @@ export function LiveNavigationMap({
             if (!mountedRef.current || !mapRef.current) return;
             const t = Math.min(1, (now - startTime) / duration);
             const ease = 1 - Math.pow(1 - t, 3); // easeOutCubic
-            marker.setLatLng([
-              startLL.lat + (pos.lat - startLL.lat) * ease,
-              startLL.lng + (pos.lng - startLL.lng) * ease,
-            ]);
+            existingMarker.setPosition({
+              lat: startLat + (pos.lat - startLat) * ease,
+              lng: startLng + (pos.lng - startLng) * ease,
+            });
             if (t < 1) requestAnimationFrame(animate);
           };
           requestAnimationFrame(animate);
         } else {
-          marker.setLatLng([pos.lat, pos.lng]);
+          existingMarker.setPosition(pos);
         }
       }
     },
@@ -263,9 +249,8 @@ export function LiveNavigationMap({
   // ── Update markers when positions change ──
   useEffect(() => {
     if (!mapReady) return;
-    const L = LRef.current;
     const map = mapRef.current;
-    if (!L || !map) return;
+    if (!map) return;
 
     // Driver marker with heading rotation
     if (driverPos && isValidLocation(driverPos.lat, driverPos.lng)) {
@@ -274,19 +259,19 @@ export function LiveNavigationMap({
 
       // GPS accuracy pulse circle
       if (!pulseRef.current) {
-        const pulseIcon = L.divIcon({
-          className: "driver-pulse",
-          html: `<div style="width:60px;height:60px;"><img src="${pulseCircleSvg(driverColor)}" width="60" height="60"/></div>`,
-          iconSize: [60, 60],
-          iconAnchor: [30, 30],
+        pulseRef.current = new google.maps.Circle({
+          map,
+          center: driverPos,
+          radius: 28,
+          strokeOpacity: 0,
+          fillColor: driverColor,
+          fillOpacity: 0.16,
+          clickable: false,
+          zIndex: 1,
         });
-        pulseRef.current = L.marker([driverPos.lat, driverPos.lng], {
-          icon: pulseIcon,
-          zIndexOffset: 999,
-          interactive: false,
-        }).addTo(map);
       } else {
-        pulseRef.current.setLatLng([driverPos.lat, driverPos.lng]);
+        pulseRef.current.setCenter(driverPos);
+        pulseRef.current.setOptions({ fillColor: driverColor });
       }
     }
 
@@ -341,40 +326,42 @@ export function LiveNavigationMap({
   // ── Update route polyline ──
   useEffect(() => {
     const map = mapRef.current;
-    const L = LRef.current;
-    if (!map || !L || !mapReady) return;
+    if (!map || !mapReady) return;
 
     // Remove old polyline
     if (polylineRef.current) {
-      map.removeLayer(polylineRef.current);
+      polylineRef.current.setMap(null);
       polylineRef.current = null;
     }
 
     if (route?.geometry && route.geometry.length > 0) {
-      const latLngs = route.geometry.map(([lng, lat]: [number, number]) => [lat, lng]);
+      const path = route.geometry.map(([lng, lat]: [number, number]) => ({ lat, lng }));
 
       const routeColor = phase === "to_vendor" ? "#8B5CF6" : "#3B82E6";
-      const routeStyle =
+      const routeStyle: google.maps.PolylineOptions =
         route.status === "success"
-          ? { color: routeColor, weight: 6, opacity: 0.9, lineCap: "round", lineJoin: "round" }
+          ? { strokeColor: routeColor, strokeWeight: 6, strokeOpacity: 0.9 }
           : {
-              color: "#94A3B8",
-              weight: 4,
-              opacity: 0.75,
-              dashArray: "8 8",
-              lineCap: "round",
-              lineJoin: "round",
+              strokeColor: "#94A3B8",
+              strokeWeight: 4,
+              strokeOpacity: 0.75,
+              icons: [
+                {
+                  icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 4 },
+                  offset: "0",
+                  repeat: "16px",
+                },
+              ],
             };
 
-      polylineRef.current = L.polyline(latLngs, routeStyle).addTo(map);
+      polylineRef.current = new google.maps.Polyline({ path, map, ...routeStyle });
 
       // Only auto-fit bounds on initial load if not panning
       if (!isUserPanning && route.status === "success") {
         try {
-          const bounds = polylineRef.current.getBounds();
-          if (bounds.isValid()) {
-            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 17 });
-          }
+          const bounds = new google.maps.LatLngBounds();
+          path.forEach((point) => bounds.extend(point));
+          map.fitBounds(bounds, 50);
         } catch {
           // bounds may be invalid
         }
@@ -387,11 +374,9 @@ export function LiveNavigationMap({
     if (!followMode || !driverPos || !mapRef.current || isUserPanning) return;
 
     const map = mapRef.current;
-    const currentZoom = map.getZoom();
-    map.setView([driverPos.lat, driverPos.lng], Math.max(currentZoom, 16), {
-      animate: true,
-      duration: 0.5,
-    });
+    const currentZoom = map.getZoom() ?? 16;
+    map.panTo(driverPos);
+    map.setZoom(Math.max(currentZoom, 16));
   }, [driverPos?.lat, driverPos?.lng, followMode, isUserPanning]);
 
   // ── Re-center handler ──
@@ -399,13 +384,25 @@ export function LiveNavigationMap({
     setIsUserPanning(false);
     onRecenter?.();
     if (driverPos && mapRef.current) {
-      mapRef.current.setView([driverPos.lat, driverPos.lng], 16, { animate: true });
+      mapRef.current.panTo(driverPos);
+      mapRef.current.setZoom(16);
     }
   }, [driverPos, onRecenter]);
 
   return (
     <div className={`relative ${className ?? ""}`} style={{ minHeight: "100%" }}>
       <div ref={containerRef} className="absolute inset-0 z-0" />
+      {mapError && (
+        <div className="absolute inset-0 z-10 grid place-items-center bg-slate-100 p-6 text-center text-sm text-slate-700">
+          <div>
+            <p className="font-semibold">Google Maps unavailable</p>
+            <p className="mt-1">{mapError}</p>
+            <p className="mt-2 text-xs">
+              Configure VITE_GOOGLE_MAPS_API_KEY for this app and enable Maps JavaScript API.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Rerouting overlay */}
       {isRerouting && (

@@ -87,7 +87,7 @@ function Deliveries() {
             .limit(1),
           db
             .from("delivery_assignments")
-            .select(`*, orders(order_number, order_items(*), total, shipping_fee, buyer_name)`)
+            .select(`*, orders(order_code, order_items(*), total, shipping_fee, customer_name)`)
             .eq("partner_id", partner.id)
             .in("status", ["delivered", "cancelled", "rejected", "expired"])
             .order("created_at", { ascending: false })

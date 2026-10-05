@@ -3,8 +3,8 @@
  *
  * This is a dedicated mobile-first navigation view for the delivery partner.
  * It replaces the static MapPanel with:
- * - Live GPS tracking on Leaflet + OSM
- * - OSRM road-following route
+ * - Live GPS tracking on Google Maps
+ * - Google Maps road-following route
  * - Turn-by-turn navigation instructions
  * - Auto phase transition (vendor → customer)
  * - Arrival detection
@@ -24,7 +24,7 @@ import {
   nextFlowStep,
   INR,
   ASSIGNMENT_STATUS_LABEL,
-  osmDirections,
+  googleMapsDirections,
 } from "@/lib/delivery";
 import { isValidCoordinate } from "@/lib/geo";
 import { ChevronDown, ChevronUp, MapPin, Navigation, X } from "lucide-react";
@@ -182,7 +182,7 @@ export function DeliveryNavigationScreen({
           )}
           {nav.destination && (
             <a
-              href={osmDirections(
+              href={googleMapsDirections(
                 nav.displayPos ? [nav.displayPos.lat, nav.displayPos.lng] : null,
                 [nav.destination.lat, nav.destination.lng],
               )}
@@ -191,15 +191,15 @@ export function DeliveryNavigationScreen({
               className="flex items-center gap-1 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 text-xs font-bold shadow-md transition-transform active:scale-95 shrink-0"
               title={
                 nav.phase === "to_vendor"
-                  ? "Navigate to Shop on OpenStreetMap"
-                  : "Navigate to Customer on OpenStreetMap"
+                  ? "Navigate to Shop on Google Maps"
+                  : "Navigate to Customer on Google Maps"
               }
             >
               <Navigation className="h-3.5 w-3.5" />
-              <span>OpenStreetMap 🗺️</span>
+              <span>Google Maps</span>
             </a>
           )}
-          {nav.route && (
+          {nav.route?.status === "success" && (
             <span className="hidden sm:inline-block rounded-full bg-primary/10 px-2 py-0.5 font-mono text-xs font-semibold text-primary">
               {nav.route.formattedDuration} · {nav.route.formattedDistance}
             </span>

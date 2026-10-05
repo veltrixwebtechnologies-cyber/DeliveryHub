@@ -115,13 +115,17 @@ If a fresh location cannot be saved, order acceptance pauses and tells the rider
 
 ## Architecture
 
-| Area             | Implementation                                        |
-| ---------------- | ----------------------------------------------------- |
-| Front end        | React 19, TypeScript, Vite, TanStack Start/Router     |
-| UI               | Tailwind CSS, Radix UI, Lucide, Sonner                |
-| Backend          | Supabase Auth, Postgres, RLS, Realtime, Storage, RPCs |
-| Maps             | OpenStreetMap embeds and directions links             |
-| Deployment build | Cloudflare-compatible Nitro output                    |
+| Area      | Implementation                                                 |
+| --------- | -------------------------------------------------------------- |
+| Front end | React 19, TypeScript, Vite, TanStack Start/Router              |
+| UI        | Tailwind CSS, Radix UI, Lucide, Sonner                         |
+| Backend   | Supabase Auth, Postgres, RLS, Realtime, Storage, RPCs          |
+| Maps      | Google Maps JavaScript API, geocoding, routing, and directions |
+
+For local map features, copy `.env.example` to `.env` and set
+`VITE_GOOGLE_MAPS_API_KEY` to a browser key restricted to the app's allowed
+HTTP referrers. Enable Maps JavaScript API and Geocoding API for that key.
+| Deployment build | Cloudflare-compatible Nitro output |
 
 ```text
 src/

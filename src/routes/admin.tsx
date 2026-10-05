@@ -167,16 +167,22 @@ function AdminPage() {
 
   async function decide(status: "approved" | "rejected" | "info_requested" | "suspended") {
     if (!selected) return;
-    const { error } = await db
-      .from("delivery_partners")
-      .update({
-        status,
-        admin_note: note || null,
-        approved_at: status === "approved" ? new Date().toISOString() : null,
-      })
-      .eq("id", selected.id);
+    const { data: updatedPartner, error } = await db.rpc("admin_review_delivery_partner", {
+      _partner_id: selected.id,
+      _status: status,
+      _admin_note: note || null,
+    });
     if (error) {
-      toast.error(error.message);
+      // Preserve the actual Postgres/PostgREST error. A 42501 can also come
+      // from a trigger or audit insert after the RPC authorization check, so
+      // presenting every occurrence as a missing admin permission is misleading.
+      toast.error(`Partner review failed: ${error.message}`);
+      return;
+    }
+    if (!updatedPartner || updatedPartner.status !== status) {
+      toast.error(
+        "Partner status was not updated. Check your admin access and refresh the application.",
+      );
       return;
     }
     const { error: notificationError } = await db.from("delivery_notifications").insert({

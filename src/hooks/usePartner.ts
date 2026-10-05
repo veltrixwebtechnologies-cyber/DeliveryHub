@@ -31,6 +31,12 @@ export function usePartner() {
     queryFn: async () => {
       return getPartnerForDashboard(user!.id);
     },
+    retry: 1,
+    retryDelay: 1_000,
+    // Approval is an admin-side change. Poll as a fallback because Realtime
+    // delivery can be unavailable when publication/RLS configuration differs.
+    refetchInterval: user ? 10_000 : false,
+    refetchOnWindowFocus: true,
   });
 
   return {
@@ -38,6 +44,7 @@ export function usePartner() {
     partner: query.data ?? null,
     isLoading: user === undefined || (!!user && query.isLoading),
     signedOut: user === null,
+    error: query.error,
     refetch: query.refetch,
   };
 }
@@ -48,15 +55,13 @@ export function useIsAdmin() {
     queryKey: ["is-admin", user?.id],
     enabled: !!user,
     queryFn: async () => {
-      // Prefer the SECURITY DEFINER role helper. It avoids exposing a direct
-      // user_roles REST read and remains valid when production RLS differs
-      // from the local schema.
-      const { data: roleCheck, error: roleError } = await supabase.rpc("has_role", {
-        _user_id: user!.id,
-        _role: "admin",
+      // Gate this admin area by the same explicit capability used by the
+      // delivery-partner review RPC; do not infer access from UI role labels.
+      const { data: allowed, error } = await supabase.rpc("has_admin_permission", {
+        p_permission: "delivery_partners.manage",
       });
-      if (roleError) throw roleError;
-      return roleCheck === true;
+      if (error) throw error;
+      return allowed === true;
     },
   });
 }

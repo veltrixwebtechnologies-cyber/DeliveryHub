@@ -13,9 +13,6 @@ export default defineConfig({
       rollupOptions: {
         output: {
           manualChunks(id) {
-            if (id.includes("node_modules/leaflet") || id.includes("node_modules/react-leaflet")) {
-              return "maps-vendor";
-            }
             if (id.includes("node_modules/lottie-react")) {
               return "lottie-vendor";
             }

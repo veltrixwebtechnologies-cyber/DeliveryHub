@@ -1,7 +1,7 @@
 /**
  * useDriverNavigation – Core navigation hook for delivery partner
  *
- * Real GPS tracking, OSRM road routing, off-route rerouting,
+ * Real GPS tracking, Google Maps road routing, off-route rerouting,
  * automatic phase transitions, arrival detection, smooth position updates.
  */
 

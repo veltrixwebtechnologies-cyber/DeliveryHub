@@ -7,7 +7,14 @@ import { isValidCoordinate } from "@/lib/geo";
 
 export function normalizeOrder(row: any) {
   const seller = row?.seller ?? row?.vendors ?? null;
+  const activeAssignment = Array.isArray(row?.delivery_assignments)
+    ? (row?.delivery_assignments.find(
+        (a: any) => a.status !== "expired" && a.status !== "rejected",
+      ) ?? row?.delivery_assignments[0])
+    : (row?.delivery_assignments ?? null);
+
   const address = [
+    activeAssignment?.pickup_address,
     seller?.address_line1,
     seller?.address_line2,
     seller?.city,
@@ -16,12 +23,6 @@ export function normalizeOrder(row: any) {
   ]
     .filter(Boolean)
     .join(", ");
-
-  const activeAssignment = Array.isArray(row?.delivery_assignments)
-    ? (row?.delivery_assignments.find(
-        (a: any) => a.status !== "expired" && a.status !== "rejected",
-      ) ?? row?.delivery_assignments[0])
-    : (row?.delivery_assignments ?? null);
 
   const partnerRow = row?.assigned_partner ?? activeAssignment?.delivery_partners ?? null;
   const assigned_partner = partnerRow
@@ -37,34 +38,24 @@ export function normalizeOrder(row: any) {
     : null;
 
   const rawLat =
+    activeAssignment?.pickup_latitude ??
     seller?.lat ??
     seller?.latitude ??
     seller?.wizard_data?.pickupLat ??
     seller?.wizard_data?.shopCoordinates?.lat;
   const rawLng =
+    activeAssignment?.pickup_longitude ??
     seller?.lng ??
     seller?.longitude ??
     seller?.wizard_data?.pickupLng ??
     seller?.wizard_data?.shopCoordinates?.lng;
-  let validLat = isValidCoordinate(rawLat, rawLng) ? Number(rawLat) : null;
-  let validLng = isValidCoordinate(rawLat, rawLng) ? Number(rawLng) : null;
-
-  // Filter out legacy Kochi mock data (9.98xx lat) for vendors
-  if (!validLat || !validLng || (validLat < 10.5 && validLat > 9.0)) {
-    validLat = 11.0028;
-    validLng = 77.0865;
-  }
+  const validLat = isValidCoordinate(rawLat, rawLng) ? Number(rawLat) : null;
+  const validLng = isValidCoordinate(rawLat, rawLng) ? Number(rawLng) : null;
 
   const rawCustLat = row?.customer_latitude ?? row?.destination_lat;
   const rawCustLng = row?.customer_longitude ?? row?.destination_lng;
-  let validCustLat = isValidCoordinate(rawCustLat, rawCustLng) ? Number(rawCustLat) : null;
-  let validCustLng = isValidCoordinate(rawCustLat, rawCustLng) ? Number(rawCustLng) : null;
-
-  // Filter out legacy Kochi mock data (9.98xx lat) or missing coords for customers
-  if (!validCustLat || !validCustLng || (validCustLat < 10.5 && validCustLat > 9.0)) {
-    validCustLat = validLat + 0.008;
-    validCustLng = validLng + 0.008;
-  }
+  const validCustLat = isValidCoordinate(rawCustLat, rawCustLng) ? Number(rawCustLat) : null;
+  const validCustLng = isValidCoordinate(rawCustLat, rawCustLng) ? Number(rawCustLng) : null;
 
   return {
     ...row,
@@ -87,8 +78,9 @@ export function normalizeOrder(row: any) {
     vendors: seller
       ? {
           ...seller,
-          shop_name: seller.shop_name ?? seller.business_name,
-          address: seller.address ?? address,
+          shop_name:
+            activeAssignment?.pickup_store_name ?? seller.shop_name ?? seller.business_name,
+          address: activeAssignment?.pickup_address ?? seller.address ?? address,
           phone: seller.phone,
           lat: validLat,
           lng: validLng,

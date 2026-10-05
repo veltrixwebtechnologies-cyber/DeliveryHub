@@ -325,7 +325,7 @@ export type Database = {
           rating: number;
           registration_step: number;
           state: string | null;
-          status: Database["public"]["Enums"]["partner_status"];
+          status: string;
           street: string | null;
           total_deliveries: number;
           total_requests: number;
@@ -376,7 +376,7 @@ export type Database = {
           rating?: number;
           registration_step?: number;
           state?: string | null;
-          status?: Database["public"]["Enums"]["partner_status"];
+          status?: string;
           street?: string | null;
           total_deliveries?: number;
           total_requests?: number;
@@ -427,7 +427,7 @@ export type Database = {
           rating?: number;
           registration_step?: number;
           state?: string | null;
-          status?: Database["public"]["Enums"]["partner_status"];
+          status?: string;
           street?: string | null;
           total_deliveries?: number;
           total_requests?: number;
@@ -771,6 +771,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      admin_review_delivery_partner: {
+        Args: { _admin_note?: string | null; _partner_id: string; _status: string };
+        Returns: Json;
+      };
       accept_delivery_request: {
         Args: { _assignment_id: string };
         Returns: string;
@@ -813,6 +817,10 @@ export type Database = {
           _role: Database["public"]["Enums"]["app_role"];
           _user_id: string;
         };
+        Returns: boolean;
+      };
+      has_admin_permission: {
+        Args: { p_permission: string };
         Returns: boolean;
       };
       is_my_partner: { Args: { _partner_id: string }; Returns: boolean };
@@ -864,8 +872,6 @@ export type Database = {
         | "out_for_delivery"
         | "delivered"
         | "cancelled";
-      partner_status:
-        "draft" | "pending_verification" | "info_requested" | "approved" | "rejected" | "suspended";
       payout_status: "pending" | "processing" | "paid" | "failed";
       shift_slot: "morning" | "afternoon" | "evening" | "night";
       vehicle_type: "bike" | "scooter" | "ev" | "bicycle";
@@ -1028,14 +1034,6 @@ export const Constants = {
         "out_for_delivery",
         "delivered",
         "cancelled",
-      ],
-      partner_status: [
-        "draft",
-        "pending_verification",
-        "info_requested",
-        "approved",
-        "rejected",
-        "suspended",
       ],
       payout_status: ["pending", "processing", "paid", "failed"],
       shift_slot: ["morning", "afternoon", "evening", "night"],

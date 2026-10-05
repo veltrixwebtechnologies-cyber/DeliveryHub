@@ -26,7 +26,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { db } from "@/lib/db";
 import { usePartner } from "@/hooks/usePartner";
 import { useRoles } from "@/hooks/useRoles";
-import { INR, etaMinutes, PARTNER_STATUS_LABEL, osmDirections } from "@/lib/delivery";
+import { INR, etaMinutes, PARTNER_STATUS_LABEL, googleMapsDirections } from "@/lib/delivery";
 import { StatusBadge } from "@/components/delivery/StatusBadge";
 import { DELIVERY_ORDER_SELECT, normalizeAssignment } from "@/lib/shared-orders";
 import {
@@ -117,9 +117,10 @@ type RequestRow = {
 };
 
 function PartnerLayout() {
-  const { partner, user, isLoading: loading, refetch: refresh } = usePartner();
+  const { partner, user, isLoading: loading, error: partnerError, refetch: refresh } = usePartner();
   const roles = useRoles();
   const navigate = useNavigate();
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const [request, setRequest] = useState<RequestRow | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
@@ -136,9 +137,28 @@ function PartnerLayout() {
   const lastActivityRef = useRef(Date.now());
   const offlineWriteRef = useRef(false);
   const shownNotificationIdsRef = useRef(new Set<string>());
-  const shownNotificationKeysRef = useRef(new Set<string>());
-  const handledAssignmentIdsRef = useRef(new Set<string>());
   const lastOfferClaimTimeRef = useRef<number>(0);
+  const lastOfferClaimErrorToastRef = useRef<number>(0);
+  const offerClaimInFlightRef = useRef(false);
+  const claimOffer = useCallback(async () => {
+    if (offerClaimInFlightRef.current) return false;
+    offerClaimInFlightRef.current = true;
+    try {
+      await claimNextDeliveryOffer();
+      return true;
+    } finally {
+      offerClaimInFlightRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!loading || partnerError) {
+      setLoadingTimedOut(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setLoadingTimedOut(true), 12_000);
+    return () => window.clearTimeout(timer);
+  }, [loading, partnerError]);
 
   // Zone geofence check
   useEffect(() => {
@@ -372,14 +392,23 @@ function PartnerLayout() {
   }, [partner?.id]);
 
   useEffect(() => {
-    if (loading || roles.isLoading) return;
+    if (loading || roles.isLoading || partnerError) return;
     if (!user) navigate({ to: "/auth" });
     else if (!partner) navigate({ to: "/register" });
     else if (!roles.hasRole("delivery_partner")) navigate({ to: "/register" });
     else if (partner.status === "approved" && !roles.hasActiveRole("delivery_partner")) {
       navigate({ to: "/register" });
     } else if (partner.status === "draft") navigate({ to: "/register" });
-  }, [loading, roles.isLoading, roles.hasRole, roles.hasActiveRole, user, partner, navigate]);
+  }, [
+    loading,
+    partnerError,
+    roles.isLoading,
+    roles.hasRole,
+    roles.hasActiveRole,
+    user,
+    partner,
+    navigate,
+  ]);
 
   // Live location while online
   useEffect(() => {
@@ -446,17 +475,30 @@ function PartnerLayout() {
     if (!partner || partner.availability !== "online" || partner.status !== "approved") return;
     const interval = window.setInterval(async () => {
       const nowMs = Date.now();
-      if (nowMs - lastOfferClaimTimeRef.current > 15_000) {
+      if (
+        document.visibilityState === "visible" &&
+        nowMs - lastOfferClaimTimeRef.current > 30_000
+      ) {
         lastOfferClaimTimeRef.current = nowMs;
         try {
-          await claimNextDeliveryOffer();
-        } catch {
-          // ignore claim errors silently
+          await claimOffer();
+        } catch (claimError) {
+          console.error("[delivery-offer] claim failed", claimError);
+          if (Date.now() - lastOfferClaimErrorToastRef.current >= 60_000) {
+            lastOfferClaimErrorToastRef.current = Date.now();
+            toast.error("Could not check for delivery requests", {
+              description:
+                claimError instanceof Error
+                  ? claimError.message
+                  : "Check your connection and delivery service configuration.",
+              duration: 8_000,
+            });
+          }
         }
       }
     }, 15_000);
     return () => window.clearInterval(interval);
-  }, [partner?.id, partner?.availability, partner?.status]);
+  }, [partner?.id, partner?.availability, partner?.status, claimOffer]);
 
   // Incoming request realtime + initial fetch
   useEffect(() => {
@@ -468,23 +510,28 @@ function PartnerLayout() {
       loadInFlight = true;
       const { data: notifications, error: notificationError } = await db
         .from("delivery_notifications")
-        .select("id, title, body")
+        .select("id, title, body, kind")
         .eq("partner_id", partner.id)
         .eq("is_read", false)
         .order("created_at", { ascending: false })
         .limit(5);
+      let hasNewDeliveryNotice = false;
       if (!notificationError && notifications?.length) {
+        hasNewDeliveryNotice = notifications.some(
+          (notification: { id: string; kind?: string }) =>
+            notification.kind === "new_delivery" &&
+            !shownNotificationIdsRef.current.has(notification.id),
+        );
         const unseen = notifications.filter(
           (notification: { id: string; title: string; body: string | null }) => {
-            const key = `${notification.title}|${notification.body ?? ""}`;
-            if (shownNotificationKeysRef.current.has(key)) return false;
-            shownNotificationKeysRef.current.add(key);
             return !shownNotificationIdsRef.current.has(notification.id);
           },
         );
         unseen.forEach((notification: (typeof notifications)[number]) => {
           shownNotificationIdsRef.current.add(notification.id);
-          toast.info(notification.title, { description: notification.body ?? undefined });
+          if (notification.kind !== "new_delivery") {
+            toast.info(notification.title, { description: notification.body ?? undefined });
+          }
         });
         const ids = notifications.map((notification: { id: string }) => notification.id);
         await db.from("delivery_notifications").update({ is_read: true }).in("id", ids);
@@ -495,6 +542,24 @@ function PartnerLayout() {
         loadInFlight = false;
         return;
       }
+
+      // Some deployed dispatch paths have emitted the notification before a
+      // usable assignment was visible. Reconcile the alert with the pull-based
+      // claim RPC immediately instead of waiting for the background interval.
+      if (hasNewDeliveryNotice) {
+        try {
+          await claimOffer();
+        } catch (claimError) {
+          console.error("[delivery-offer] notification reconciliation failed", claimError);
+          toast.error("Delivery alert received, but the offer could not be loaded", {
+            description:
+              claimError instanceof Error
+                ? claimError.message
+                : "Check the delivery dispatch service and try again.",
+          });
+        }
+      }
+
       const { data: activeAssignments, error: activeError } = await db
         .from("delivery_assignments")
         .select("id")
@@ -528,6 +593,13 @@ function PartnerLayout() {
       }
       const assignment = (data ?? [])[0] ?? null;
       if (!assignment) {
+        if (hasNewDeliveryNotice) {
+          toast.warning("The delivery alert has no active offer", {
+            description:
+              "It may have expired or dispatch could not create an assignment. Ask the seller to retry dispatch.",
+            duration: 8_000,
+          });
+        }
         setRequest(null);
         loadInFlight = false;
         return;
@@ -536,12 +608,9 @@ function PartnerLayout() {
       if (
         !["pending", "requested"].includes(assignment.status) ||
         !assignment.expires_at ||
-        new Date(assignment.expires_at).getTime() <= Date.now() ||
-        handledAssignmentIdsRef.current.has(assignment.id)
+        new Date(assignment.expires_at).getTime() <= Date.now()
       ) {
-        if (!handledAssignmentIdsRef.current.has(assignment.id)) {
-          setRequest(null);
-        }
+        setRequest(null);
         loadInFlight = false;
         return;
       }
@@ -560,31 +629,15 @@ function PartnerLayout() {
         return;
       }
 
-      // Auto-approve incoming delivery request
-      try {
-        handledAssignmentIdsRef.current.add(assignment.id);
-        const acceptedData = await acceptDelivery(assignment.id);
-        if (acceptedData) {
-          toast.success("⚡ Order Auto-Approved & Assigned!", {
-            description: `Pickup: ${order?.vendors?.shop_name ?? "Local Shop"} · Drop: ${order?.customer_name ?? "Customer"}`,
-            duration: 6000,
-          });
-          void requestCurrentPosition().then(() => refresh());
-          navigate({ to: "/partner/deliveries" });
-          loadInFlight = false;
-          return;
-        }
-      } catch (autoErr) {
-        console.error("[auto-approval] failed auto-accepting delivery", autoErr);
-        // Do not set request modal or loop if auto-accept fails
-        loadInFlight = false;
-        return;
-      }
-
       setRequest(normalizeAssignment({ ...assignment, orders: order ?? null }));
       loadInFlight = false;
     };
     void load();
+    // Realtime can be unavailable (for example when the table is not in the
+    // publication), so poll as a fallback while online to surface new offers.
+    const pollTimer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 15_000);
 
     const channel = supabase
       .channel(`partner-${partner.id}`)
@@ -617,10 +670,11 @@ function PartnerLayout() {
       .subscribe();
 
     return () => {
+      window.clearInterval(pollTimer);
       if (refreshTimer !== null) window.clearTimeout(refreshTimer);
       supabase.removeChannel(channel);
     };
-  }, [partner]);
+  }, [partner, claimOffer]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 500);
@@ -731,7 +785,49 @@ function PartnerLayout() {
     if (on && "geolocation" in navigator) requestCurrentPosition();
   }
 
+  if (partnerError) {
+    const message =
+      partnerError instanceof Error ? partnerError.message : "Partner profile could not be loaded.";
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-12">
+        <Card>
+          <CardContent className="space-y-3 p-6">
+            <h1 className="text-lg font-semibold">Could not load your partner profile</h1>
+            <p className="text-sm text-muted-foreground">
+              Check your connection and the app’s Supabase configuration, then retry. No account or
+              delivery data has been changed.
+            </p>
+            <p className="break-words rounded-lg bg-secondary p-3 text-xs text-muted-foreground">
+              {message}
+            </p>
+            <Button type="button" onClick={() => void refresh()}>
+              Retry loading
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (loading || !partner) {
+    if (loadingTimedOut) {
+      return (
+        <div className="mx-auto max-w-2xl px-4 py-12">
+          <Card>
+            <CardContent className="space-y-3 p-6">
+              <h1 className="text-lg font-semibold">Partner Hub is taking longer than expected</h1>
+              <p className="text-sm text-muted-foreground">
+                The sign-in session or partner profile request has not completed yet. Check your
+                connection, then retry; the page will not stay on a blank skeleton.
+              </p>
+              <Button type="button" onClick={() => window.location.reload()}>
+                Retry page
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
     return (
       <div className="mx-auto max-w-5xl space-y-4 px-4 py-12">
         <Skeleton className="h-10 w-56" />
@@ -816,7 +912,7 @@ function PartnerLayout() {
               className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
               onClick={() =>
                 window.open(
-                  osmDirections(requestFrom, [zoneInfo.zoneLat, zoneInfo.zoneLng]),
+                  googleMapsDirections(requestFrom, [zoneInfo.zoneLat, zoneInfo.zoneLng]),
                   "_blank",
                 )
               }

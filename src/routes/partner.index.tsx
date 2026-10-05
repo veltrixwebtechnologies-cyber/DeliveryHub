@@ -21,7 +21,7 @@ import { EmptyState } from "@/components/delivery/AppShell";
 import { StatusBadge } from "@/components/delivery/StatusBadge";
 import { db } from "@/lib/db";
 import { usePartner } from "@/hooks/usePartner";
-import { ACTIVE_ASSIGNMENT_STATUSES, osmDirections, INR, pct } from "@/lib/delivery";
+import { ACTIVE_ASSIGNMENT_STATUSES, googleMapsDirections, INR, pct } from "@/lib/delivery";
 import { DELIVERY_ORDER_SELECT, normalizeAssignment } from "@/lib/shared-orders";
 import { SafetyActions } from "@/components/delivery/SafetyActions";
 import { MapPanel } from "@/components/delivery/MapPanel";
@@ -86,13 +86,11 @@ function LiveLocationCard({
     let active = true;
     const fetchAddress = async () => {
       try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.lat}&lon=${location.lng}&zoom=16`,
-        );
-        if (!res.ok) return;
-        const data = await res.json();
-        if (active && data?.display_name) {
-          const parts = data.display_name.split(",");
+        const { loadGoogleMaps } = await import("@/lib/google-maps-loader");
+        const googleApi = await loadGoogleMaps();
+        const data = await new googleApi.maps.Geocoder().geocode({ location });
+        if (active && data.results[0]?.formatted_address) {
+          const parts = data.results[0].formatted_address.split(",");
           const shortName = parts.slice(0, 3).join(", ");
           setAddressName(shortName);
         }
@@ -524,7 +522,7 @@ function PartnerDashboard() {
                     : Number(a.orders?.delivery_longitude);
                   const targetValid = isValidCoordinate(targetLat, targetLng);
                   const navUrl = targetValid
-                    ? osmDirections(
+                    ? googleMapsDirections(
                         isValidCoordinate(
                           Number(partner.current_latitude),
                           Number(partner.current_longitude),

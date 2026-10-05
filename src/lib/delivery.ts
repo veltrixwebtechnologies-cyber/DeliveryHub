@@ -124,41 +124,6 @@ export function nextFlowStep(current: string) {
   return i >= 0 && i < DELIVERY_FLOW.length - 1 ? DELIVERY_FLOW[i + 1] : null;
 }
 
-export function osmEmbed(lat: number, lng: number, zoomPad = 0.012) {
-  const bbox = `${lng - zoomPad},${lat - zoomPad},${lng + zoomPad},${lat + zoomPad}`;
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lng}`;
-}
-
-export function osmDirections(
-  from: [number, number] | null | undefined,
-  to: [number, number] | null | undefined,
-) {
-  const isValid = (c: [number, number] | null | undefined): c is [number, number] =>
-    !!c &&
-    Number.isFinite(c[0]) &&
-    Number.isFinite(c[1]) &&
-    !(c[0] === 0 && c[1] === 0) &&
-    Math.abs(c[0]) <= 90 &&
-    Math.abs(c[1]) <= 180;
-
-  const validTo = isValid(to) ? to : null;
-  const validFrom = isValid(from) ? from : null;
-
-  if (!validTo && !validFrom) {
-    return `https://www.openstreetmap.org/`;
-  }
-
-  if (!validTo) {
-    return `https://www.openstreetmap.org/?mlat=${validFrom![0]}&mlon=${validFrom![1]}#map=16/${validFrom![0]}/${validFrom![1]}`;
-  }
-
-  if (!validFrom) {
-    return `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=Current+Location%3B${validTo[0]}%2C${validTo[1]}`;
-  }
-
-  return `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${validFrom[0]}%2C${validFrom[1]}%3B${validTo[0]}%2C${validTo[1]}`;
-}
-
 export function googleMapsDirections(
   from: [number, number] | null | undefined,
   to: [number, number] | null | undefined,
@@ -181,10 +146,10 @@ export function googleMapsDirections(
   }
 
   if (validFrom) {
-    return `https://www.google.com/maps/dir/?api=1&origin=${validFrom[0]},${validFrom[1]}&destination=${validTo[0]},${validTo[1]}&travelmode=two_wheeler`;
+    return `https://www.google.com/maps/dir/?api=1&origin=${validFrom[0]},${validFrom[1]}&destination=${validTo[0]},${validTo[1]}&travelmode=two-wheeler&dir_action=navigate`;
   }
 
-  return `https://www.google.com/maps/dir/?api=1&destination=${validTo[0]},${validTo[1]}&travelmode=two_wheeler`;
+  return `https://www.google.com/maps/dir/?api=1&destination=${validTo[0]},${validTo[1]}&travelmode=two-wheeler&dir_action=navigate`;
 }
 
 export function etaMinutes(distanceKm: number) {

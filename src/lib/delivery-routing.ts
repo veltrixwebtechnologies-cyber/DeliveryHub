@@ -1,6 +1,6 @@
 /**
- * LocalShore Delivery Partner Hub — OSRM Road Routing & Navigation Engine
- * Uses real OSRM for road-following routes, turn-by-turn instructions,
+ * LocalShore Delivery Partner Hub — Google Maps Road Routing & Navigation Engine
+ * Uses Google Maps for road-following routes, turn-by-turn instructions,
  * off-route detection, and intelligent recalculation.
  */
 
@@ -13,6 +13,7 @@ import {
   normalizeCoordinate,
   type Coordinate,
 } from "@/lib/geo";
+import { loadGoogleMaps } from "@/lib/google-maps-loader";
 
 export type MapLocation = Coordinate;
 
@@ -110,7 +111,7 @@ export function formatDurationShort(seconds: number): string {
   return `${Math.max(1, Math.ceil(seconds / 60))} min`;
 }
 
-// ── OSRM Route Fetcher ──────────────────────────────────────────────
+// ── Google Maps road route fetcher ──────────────────────────────────
 
 export async function fetchDeliveryRoute(
   origin: MapLocation,
@@ -118,7 +119,6 @@ export async function fetchDeliveryRoute(
   phase: "to_vendor" | "to_customer" = "to_customer",
   options?: { retries?: number; signal?: AbortSignal },
 ): Promise<RouteResult> {
-  const retries = options?.retries ?? 2;
   if (!normalizeCoordinate(origin) || !normalizeCoordinate(destination)) {
     return {
       distanceMeters: null,
@@ -132,61 +132,112 @@ export async function fetchDeliveryRoute(
     };
   }
 
-  const baseUrl =
-    (typeof import.meta !== "undefined" && import.meta.env?.["VITE_ROUTING_API_URL"]) ||
-    "https://router.project-osrm.org/route/v1/driving";
+  if (options?.signal?.aborted) {
+    return {
+      distanceMeters: null,
+      durationSeconds: null,
+      geometry: [],
+      steps: [],
+      formattedDistance: "Road route unavailable",
+      formattedDuration: "Road route unavailable",
+      phase,
+      status: "error",
+    };
+  }
 
-  const coords = `${origin.lng},${origin.lat};${destination.lng},${destination.lat}`;
-  const url = `${baseUrl}/${coords}?overview=full&geometries=geojson&steps=true`;
+  try {
+    const googleApi = await loadGoogleMaps();
+    const directionsService = new googleApi.maps.DirectionsService();
+    let response: google.maps.DirectionsResult | undefined;
+    let lastRouteError: unknown;
 
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const abortListener = () => controller.abort();
-      options?.signal?.addEventListener("abort", abortListener, { once: true });
+    // Prefer motorcycle routing in supported regions, then retry with driving
+    // directions. External Google Maps navigation remains available if neither
+    // in-app route request can be served.
+    for (const travelMode of [
+      googleApi.maps.TravelMode.TWO_WHEELER,
+      googleApi.maps.TravelMode.DRIVING,
+    ]) {
+      if (options?.signal?.aborted) break;
+      try {
+        const candidate = await directionsService.route({
+          origin,
+          destination,
+          travelMode,
+          provideRouteAlternatives: false,
+          optimizeWaypoints: false,
+        });
+        if (candidate.routes[0]?.legs[0]) {
+          response = candidate;
+          break;
+        }
+      } catch (error) {
+        lastRouteError = error;
+      }
+    }
 
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      options?.signal?.removeEventListener("abort", abortListener);
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data = await res.json();
-      if (!data.routes || data.routes.length === 0) throw new Error("No routes returned");
-
-      const route = data.routes[0];
-      const distanceMeters = Math.round(route.distance);
-      const durationSeconds = Math.round(route.duration);
-      const geometry = route.geometry.coordinates as [number, number][];
-
-      const steps: TurnStep[] = (route.legs?.[0]?.steps || [])
-        .filter((step: any) => step.distance > 0 || step.maneuver?.type === "arrive")
-        .map((step: any) => ({
-          instruction: formatManeuver(
-            step.maneuver?.type ?? "continue",
-            step.maneuver?.modifier ?? "",
-          ),
-          distanceMeters: Math.round(step.distance || 0),
-          durationSeconds: Math.round(step.duration || 0),
-          name: step.name || "",
-          maneuverType: step.maneuver?.type ?? "",
-          maneuverModifier: step.maneuver?.modifier ?? "",
-        }));
-
+    if (options?.signal?.aborted) {
       return {
-        distanceMeters,
-        durationSeconds,
-        geometry,
-        steps,
-        formattedDistance: formatDistanceShort(distanceMeters),
-        formattedDuration: formatDurationShort(durationSeconds),
+        distanceMeters: null,
+        durationSeconds: null,
+        geometry: [],
+        steps: [],
+        formattedDistance: "Road route unavailable",
+        formattedDuration: "Road route unavailable",
         phase,
-        status: "success",
+        status: "error",
       };
-    } catch (err) {
-      if (options?.signal?.aborted) {
+    }
+
+    if (!response) throw lastRouteError ?? new Error("Google Maps returned no route.");
+
+    const route = response.routes[0];
+    const leg = route?.legs?.[0];
+    if (!route || !leg) throw new Error("Google Maps returned no route.");
+
+    const distanceMeters = leg.distance?.value ?? null;
+    const durationSeconds = leg.duration?.value ?? null;
+    const geometry: [number, number][] = route.overview_path.map((point) => [
+      point.lng(),
+      point.lat(),
+    ]);
+    const steps: TurnStep[] = leg.steps
+      .filter((step) => (step.distance?.value ?? 0) > 0 || step.maneuver === "arrive")
+      .map((step) => {
+        const instruction = step.instructions
+          .replace(/<[^>]*>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        const maneuverType = step.maneuver ?? "continue";
         return {
+          instruction: instruction || formatManeuver(maneuverType, ""),
+          distanceMeters: step.distance?.value ?? 0,
+          durationSeconds: step.duration?.value ?? 0,
+          name: step.instructions
+            .replace(/<[^>]*>/g, " ")
+            .replace(/\s+/g, " ")
+            .trim(),
+          maneuverType,
+          maneuverModifier: "",
+        };
+      });
+
+    return {
+      distanceMeters,
+      durationSeconds,
+      geometry,
+      steps,
+      formattedDistance:
+        distanceMeters === null ? "Road route unavailable" : formatDistanceShort(distanceMeters),
+      formattedDuration:
+        durationSeconds === null ? "Road route unavailable" : formatDurationShort(durationSeconds),
+      phase,
+      status: "success",
+    };
+  } catch (error) {
+    if (!options?.signal?.aborted) console.warn("[Routing] Google Maps route unavailable", error);
+    return options?.signal?.aborted
+      ? {
           distanceMeters: null,
           durationSeconds: null,
           geometry: [],
@@ -195,19 +246,9 @@ export async function fetchDeliveryRoute(
           formattedDuration: "Road route unavailable",
           phase,
           status: "error",
-        };
-      }
-      if (attempt === retries) {
-        console.warn(
-          `[Routing] OSRM failed after ${retries + 1} attempts, using preview fallback`,
-          err,
-        );
-        return straightLineFallback(origin, destination, phase);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 400 * Math.pow(2, attempt)));
-    }
+        }
+      : straightLineFallback(origin, destination, phase);
   }
-  return straightLineFallback(origin, destination, phase);
 }
 
 function straightLineFallback(

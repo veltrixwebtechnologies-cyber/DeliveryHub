@@ -32,6 +32,26 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
+function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    Promise.resolve(promise).then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Sign in failed. Please try again.";
+}
+
 function AuthPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -40,6 +60,7 @@ function AuthPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [authSlow, setAuthSlow] = useState(false);
   const [authMode, setAuthMode] = useState<"password" | "otp">("password");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
@@ -47,6 +68,16 @@ function AuthPage() {
   const [recoveryMode, setRecoveryMode] = useState(false);
 
   useEffect(() => {
+    // Supabase can consume the recovery URL/hash before this route's effect is
+    // mounted. Keep an explicit app marker in redirectTo and inspect both URL
+    // formats so the reset form still opens when PASSWORD_RECOVERY was emitted
+    // before we subscribed.
+    const query = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    if (query.get("flow") === "partner-password-reset" || hash.get("type") === "recovery") {
+      setRecoveryMode(true);
+    }
+
     const { data } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") setRecoveryMode(true);
     });
@@ -56,35 +87,52 @@ function AuthPage() {
   async function signIn(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-    if (error) {
+    setAuthSlow(false);
+    const slowTimer = window.setTimeout(() => setAuthSlow(true), 8_000);
+    try {
+      const { data, error } = await withTimeout(
+        supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        }),
+        30_000,
+        "Supabase sign-in did not respond within 30 seconds. Check Supabase Auth status and retry.",
+      );
+      if (error) throw error;
+      if (!data.user) throw new Error("Sign in succeeded but no user session was returned.");
+      await routeSignedInUser(data.user.id);
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      window.clearTimeout(slowTimer);
       setBusy(false);
-      toast.error(error.message);
-      return;
+      setAuthSlow(false);
     }
-
-    await routeSignedInUser(data.user.id);
-    setBusy(false);
   }
 
   async function routeSignedInUser(userId: string) {
-    const [{ data: roleRow }, { data: partner }] = await Promise.all([
-      db
-        .from("user_roles")
-        .select("role,status")
-        .eq("user_id", userId)
-        .eq("role", "admin")
-        .eq("status", "active")
-        .maybeSingle(),
-      db
-        .from("delivery_partners")
-        .select("status,registration_step")
-        .eq("user_id", userId)
-        .maybeSingle(),
-    ]);
+    const [roleResult, partnerResult] = await withTimeout(
+      Promise.all([
+        db
+          .from("user_roles")
+          .select("role,status")
+          .eq("user_id", userId)
+          .eq("role", "admin")
+          .eq("status", "active")
+          .maybeSingle(),
+        db
+          .from("delivery_partners")
+          .select("status,registration_step")
+          .eq("user_id", userId)
+          .maybeSingle(),
+      ]),
+      10_000,
+      "Signed in, but account lookup did not respond within 10 seconds. Retry or check the Supabase project connection.",
+    );
+    if (roleResult.error) throw roleResult.error;
+    if (partnerResult.error) throw partnerResult.error;
+    const roleRow = roleResult.data;
+    const partner = partnerResult.data;
     if (roleRow) return void navigate({ to: "/admin" });
     if (!partner) return void navigate({ to: "/register" });
     if (partner.status === "draft") {
@@ -129,8 +177,10 @@ function AuthPage() {
     e.preventDefault();
     if (!email.trim()) return;
     setBusy(true);
+    const redirectUrl = new URL("/auth", window.location.origin);
+    redirectUrl.searchParams.set("flow", "partner-password-reset");
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/auth`,
+      redirectTo: redirectUrl.toString(),
     });
     setBusy(false);
     if (error) {
@@ -361,9 +411,14 @@ function AuthPage() {
                 >
                   Sign in with OTP instead
                 </button>
+                {busy && authSlow ? (
+                  <p role="status" className="text-sm text-muted-foreground">
+                    Supabase is responding slowly. Keep this page open while sign-in finishes.
+                  </p>
+                ) : null}
                 <Button className="w-full" disabled={busy}>
                   {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Sign in
+                  {busy ? "Connecting..." : "Sign in"}
                 </Button>
               </form>
             )}

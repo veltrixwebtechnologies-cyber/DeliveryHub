@@ -14,7 +14,7 @@ import { formatDistanceShort, formatDurationShort, getManeuverIcon } from "@/lib
 import type { TurnStep, RouteResult } from "@/lib/delivery-routing";
 import { Navigation, Locate, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { osmDirections } from "@/lib/delivery";
+import { googleMapsDirections } from "@/lib/delivery";
 import type { NavigationPhase, ArrivalZone } from "@/hooks/useDriverNavigation";
 
 interface NavigationBarProps {
@@ -69,15 +69,8 @@ export function NavigationBar({
   const isArrived = arrivalZone === "at_vendor" || arrivalZone === "at_customer";
   const isNear = arrivalZone === "near_vendor" || arrivalZone === "near_customer";
   const hasRoadRoute = route?.status === "success";
-  const routeStatusLabel =
-    route?.status === "fallback"
-      ? "Road route unavailable."
-      : route?.status === "error"
-        ? "Route unavailable."
-        : null;
-
   const externalNavUrl = destination
-    ? osmDirections(driverPos ? [driverPos.lat, driverPos.lng] : null, [
+    ? googleMapsDirections(driverPos ? [driverPos.lat, driverPos.lng] : null, [
         destination.lat,
         destination.lng,
       ])
@@ -156,10 +149,10 @@ export function NavigationBar({
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-xs font-bold text-white shadow-lg active:scale-95 transition-all shrink-0"
-              title="Navigate in OpenStreetMap App"
+              title="Navigate in Google Maps"
             >
               <Navigation className="h-3.5 w-3.5" />
-              <span>OpenStreetMap 🗺️</span>
+              <span>Google Maps</span>
             </a>
           )}
         </div>
@@ -233,11 +226,7 @@ export function NavigationBar({
             </span>
             {gpsMessage ?? gpsStatus}
           </span>
-          {routeStatusLabel ? (
-            <span className="text-amber-300 font-semibold">{routeStatusLabel}</span>
-          ) : isOffRoute ? (
-            <span className="text-red-400 font-semibold">⚠ OFF ROUTE</span>
-          ) : null}
+          {isOffRoute && <span className="text-red-400 font-semibold">⚠ OFF ROUTE</span>}
         </div>
       </div>
     </div>

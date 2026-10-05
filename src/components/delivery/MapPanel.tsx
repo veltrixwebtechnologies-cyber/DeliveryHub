@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Navigation, MapPin, Loader2 } from "lucide-react";
-import { osmDirections } from "@/lib/delivery";
+import { googleMapsDirections } from "@/lib/delivery";
 import { isValidCoordinate } from "@/lib/geo";
-
-import { getMapTileConfig } from "@/lib/map-provider";
+import { loadGoogleMaps } from "@/lib/google-maps-loader";
 
 type Props = {
   lat: number | null;
@@ -26,8 +25,11 @@ export function MapPanel({
   coordinateStatus = "exact",
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<any>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const markersRef = useRef<google.maps.Marker[]>([]);
+  const polylineRef = useRef<google.maps.Polyline | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mapError, setMapError] = useState<string | null>(null);
   const hasTarget = isValidCoordinate(lat, lng);
   const hasFrom = !!from && isValidCoordinate(from[0], from[1]);
 
@@ -35,123 +37,107 @@ export function MapPanel({
     if (!containerRef.current) return;
 
     let isMounted = true;
+    setLoading(true);
+    setMapError(null);
 
     (async () => {
       try {
-        const L = (await import("leaflet")).default;
-        await import("leaflet/dist/leaflet.css");
+        const googleApi = await loadGoogleMaps();
 
         if (!isMounted || !containerRef.current) return;
 
-        // Clean up previous map if exists
-        if (mapRef.current) {
-          try {
-            mapRef.current.off();
-            mapRef.current.remove();
-          } catch {
-            // Ignore error when removing previous map instance
-          }
-          mapRef.current = null;
-        }
+        markersRef.current.forEach((marker) => marker.setMap(null));
+        markersRef.current = [];
+        polylineRef.current?.setMap(null);
+        polylineRef.current = null;
 
-        const center: [number, number] = hasTarget
-          ? [lat as number, lng as number]
+        const center: google.maps.LatLngLiteral = hasTarget
+          ? { lat: lat as number, lng: lng as number }
           : hasFrom
-            ? [from![0], from![1]]
-            : [11.02, 76.99];
-        const map = L.map(containerRef.current, {
+            ? { lat: from![0], lng: from![1] }
+            : { lat: 11.02, lng: 76.99 };
+        const map = new googleApi.maps.Map(containerRef.current, {
           center,
-          zoom: 15,
-          maxZoom: 18,
-          zoomControl: false,
-          attributionControl: false,
+          zoom: markerType === "rider" ? 16 : 15,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: true,
+          clickableIcons: false,
         });
-        map.setView(center, markerType === "rider" ? 16 : 15);
-
-        const tileConfig = getMapTileConfig();
-        L.tileLayer(tileConfig.url, {
-          maxZoom: tileConfig.maxZoom,
-          subdomains: tileConfig.subdomains,
-          attribution: tileConfig.attribution,
-        }).addTo(map);
-
-        setTimeout(() => {
-          if (isMounted && mapRef.current) {
-            try {
-              map.invalidateSize();
-            } catch {
-              // Ignore error on invalidateSize if map is unmounting
-            }
-          }
-        }, 100);
-
-        // Destination Marker Pin
-        const destIcon = L.divIcon({
-          className: "custom-dest-pin",
-          html: `<div style="background-color: ${markerType === "rider" ? "#10b981" : "#8b5cf6"}; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);">
-            ${markerType === "rider" ? '<span style="font-size: 13px">🛵</span>' : '<div style="width: 8px; height: 8px; background-color: white; border-radius: 50%;"></div>'}
-          </div>`,
-          iconSize: [28, 28],
-          iconAnchor: [14, 14],
-        });
-
-        if (hasTarget && markerType === "rider") {
-          L.circleMarker([lat as number, lng as number], {
-            radius: 12,
-            color: "#ffffff",
-            weight: 4,
-            fillColor: "#10b981",
-            fillOpacity: 1,
-          })
-            .addTo(map)
-            .bindPopup(label);
-          L.marker([lat as number, lng as number], { icon: destIcon, zIndexOffset: 1000 }).addTo(
+        const bounds = new googleApi.maps.LatLngBounds();
+        const destination = { lat: lat as number, lng: lng as number };
+        if (hasTarget) {
+          const marker = new googleApi.maps.Marker({
             map,
-          );
-        } else if (hasTarget) {
-          L.marker([lat as number, lng as number], { icon: destIcon, zIndexOffset: 1000 })
-            .addTo(map)
-            .bindPopup(label);
+            position: destination,
+            title: label,
+            zIndex: 2,
+            ...(markerType !== "rider" && {
+              icon: {
+                path: googleApi.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+                fillColor: "#8b5cf6",
+                fillOpacity: 1,
+                strokeColor: "#ffffff",
+                strokeWeight: 2,
+                scale: 6,
+              },
+            }),
+          });
+          markersRef.current.push(marker);
+          bounds.extend(destination);
+          const info = new googleApi.maps.InfoWindow({ content: label });
+          marker.addListener("click", () => info.open({ map, anchor: marker }));
         }
 
         // If rider origin is available, plot rider position and polyline
         if (hasTarget && hasFrom) {
-          const riderIcon = L.divIcon({
-            className: "custom-rider-pin",
-            html: `<div style="background-color: #10b981; width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);">
-              <span style="color: white; font-size: 12px; font-weight: bold;">🛵</span>
-            </div>`,
-            iconSize: [26, 26],
-            iconAnchor: [13, 13],
+          const origin = { lat: from[0], lng: from[1] };
+          const riderMarker = new googleApi.maps.Marker({
+            map,
+            position: origin,
+            title: "Delivery partner",
+            icon: {
+              path: googleApi.maps.SymbolPath.CIRCLE,
+              scale: 9,
+              fillColor: "#10b981",
+              fillOpacity: 1,
+              strokeColor: "#ffffff",
+              strokeWeight: 3,
+            },
           });
-
-          L.marker([from[0], from[1]], { icon: riderIcon }).addTo(map);
-
-          const polyline = L.polyline(
-            [
-              [from![0], from![1]],
-              [lat as number, lng as number],
-            ],
-            { color: "#8b5cf6", weight: 4, opacity: 0.8, dashArray: "6, 8" },
-          ).addTo(map);
-
-          map.fitBounds(polyline.getBounds(), { padding: [30, 30] });
+          markersRef.current.push(riderMarker);
+          bounds.extend(origin);
+          polylineRef.current = new googleApi.maps.Polyline({
+            path: [origin, destination],
+            geodesic: true,
+            strokeColor: "#8b5cf6",
+            strokeOpacity: 0.8,
+            strokeWeight: 4,
+            map,
+          });
+          map.fitBounds(bounds, 30);
         }
 
         mapRef.current = map;
         setLoading(false);
       } catch (err) {
-        console.error("[MapPanel] Leaflet map init failed", err);
+        console.error("[MapPanel] Google Maps init failed", err);
+        if (isMounted) {
+          setMapError(err instanceof Error ? err.message : "Google Maps is unavailable right now.");
+        }
         setLoading(false);
       }
     })();
 
     return () => {
       isMounted = false;
+      markersRef.current.forEach((marker) => marker.setMap(null));
+      markersRef.current = [];
+      polylineRef.current?.setMap(null);
+      polylineRef.current = null;
       if (mapRef.current) {
         try {
-          mapRef.current.off();
-          mapRef.current.remove();
+          google.maps.event.clearInstanceListeners(mapRef.current);
         } catch {
           // Ignore error during unmount cleanup
         }
@@ -168,14 +154,23 @@ export function MapPanel({
     );
   }
 
-  const osmUrl = hasTarget ? osmDirections(from, [lat as number, lng as number]) : null;
+  const directionsUrl = hasTarget
+    ? googleMapsDirections(from, [lat as number, lng as number])
+    : null;
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-      <div ref={containerRef} className="relative w-full bg-muted" style={{ height }}>
+      <div className="relative w-full bg-muted" style={{ height }}>
+        {/* Google Maps owns and mutates this element's children; keep React overlays outside it. */}
+        <div ref={containerRef} className="absolute inset-0" />
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted/80 text-muted-foreground text-xs gap-2">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading Map...
+          </div>
+        )}
+        {mapError && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted p-4 text-center text-xs text-muted-foreground">
+            {mapError}
           </div>
         )}
         {coordinateStatus === "approximate" && (
@@ -183,16 +178,16 @@ export function MapPanel({
             Approximate location
           </div>
         )}
-        {osmUrl && (
+        {directionsUrl && (
           <a
-            href={osmUrl}
+            href={directionsUrl}
             target="_blank"
             rel="noreferrer"
             className="absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-full bg-emerald-600/90 hover:bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-sm transition-transform active:scale-95"
-            title="Open Turn-by-Turn GPS Navigation in OpenStreetMap"
+            title="Open directions in Google Maps"
           >
             <Navigation className="h-3.5 w-3.5" />
-            <span>OpenStreetMap 🗺️</span>
+            <span>Google Maps</span>
           </a>
         )}
       </div>
@@ -201,14 +196,14 @@ export function MapPanel({
           <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
           {label}
         </span>
-        {osmUrl ? (
+        {directionsUrl ? (
           <Button
             asChild
             size="sm"
             className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-sm shrink-0"
           >
-            <a href={osmUrl} target="_blank" rel="noreferrer">
-              <Navigation className="mr-1.5 h-3.5 w-3.5" /> Navigate on OpenStreetMap
+            <a href={directionsUrl} target="_blank" rel="noreferrer">
+              <Navigation className="mr-1.5 h-3.5 w-3.5" /> Navigate on Google Maps
             </a>
           </Button>
         ) : (
@@ -249,15 +244,15 @@ export function AddressNavigation({ address, label, from = null }: AddressNaviga
     // 1. Try primary address search
     const geocode = async () => {
       try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cleanAddress)}&limit=1`,
-        );
-        const data = await res.json();
+        const googleApi = await loadGoogleMaps();
+        const data = await new googleApi.maps.Geocoder().geocode({ address: cleanAddress });
         if (!isCurrent) return;
 
-        if (Array.isArray(data) && data.length > 0) {
-          const lat = parseFloat(data[0].lat);
-          const lng = parseFloat(data[0].lon);
+        const firstResult = data.results?.[0];
+        if (firstResult) {
+          const point = firstResult.geometry.location;
+          const lat = point.lat();
+          const lng = point.lng();
           if (isValidCoordinate(lat, lng)) {
             setCoords({ lat, lng });
             setCoordinateStatus("exact");

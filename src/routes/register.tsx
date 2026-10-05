@@ -295,9 +295,11 @@ function RegisterPage() {
         hasDoc("vehicle_photo"));
   const validStep5 =
     isBicycle || (hasValue("licence_number", "licence_expiry") && hasDoc("licence"));
+  const panNumber = (form["pan_number"] ?? "").trim().toUpperCase();
+  const validPanNumber = /^[A-Z]{5}\d{4}[A-Z]$/.test(panNumber);
   const validStep6 =
     /^\d{12}$/.test(form["aadhaar_number"] ?? "") &&
-    /^[A-Z]{5}\d{4}[A-Z]$/.test(form["pan_number"] ?? "") &&
+    validPanNumber &&
     hasDoc("aadhaar_front") &&
     hasDoc("aadhaar_back") &&
     hasDoc("pan");
@@ -686,7 +688,15 @@ function RegisterPage() {
                     maxLength={10}
                     value={form["pan_number"] ?? ""}
                     onChange={(e) => set("pan_number", e.target.value.toUpperCase())}
+                    aria-invalid={panNumber.length > 0 && !validPanNumber}
+                    aria-describedby="partner-pan-format"
                   />
+                  <p
+                    id="partner-pan-format"
+                    className={`text-xs ${panNumber.length > 0 && !validPanNumber ? "text-destructive" : "text-muted-foreground"}`}
+                  >
+                    PAN must be 10 characters: 5 letters, 4 digits, then 1 letter.
+                  </p>
                 </Field>
                 <Field label="Aadhaar front">
                   <FileInput
