@@ -6,10 +6,15 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
+    "prebuild": "npm run check:boundaries",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit",
+    "check:boundaries": "node scripts/check-module-boundaries.mjs",
+    "lint:modules": "eslint src/modules src/shared",
+    "test:architecture": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "5.5.7",

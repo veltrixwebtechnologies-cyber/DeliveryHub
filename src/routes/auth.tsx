@@ -66,6 +66,33 @@ function AuthPage() {
   const [otpSent, setOtpSent] = useState(false);
   const [forgotPassword, setForgotPassword] = useState(false);
   const [recoveryMode, setRecoveryMode] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+
+  async function verifyRecoveryCode(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const { data, error } = await withTimeout(
+        supabase.auth.verifyOtp({
+          email: email.trim(),
+          token: otp.trim(),
+          type: "recovery",
+        }),
+        30_000,
+        "Password recovery timed out. Please try again.",
+      );
+      if (error) throw error;
+      if (!data.session) throw new Error("Recovery session was not established.");
+      setPassword("");
+      setConfirmPassword("");
+      setRecoveryMode(true);
+      setOtp("");
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     // Supabase can consume the recovery URL/hash before this route's effect is
@@ -179,16 +206,23 @@ function AuthPage() {
     setBusy(true);
     const redirectUrl = new URL("/auth", window.location.origin);
     redirectUrl.searchParams.set("flow", "partner-password-reset");
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: redirectUrl.toString(),
-    });
-    setBusy(false);
-    if (error) {
-      toast.error(error.message);
-      return;
+    try {
+      const { error } = await withTimeout(
+        supabase.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: redirectUrl.toString(),
+        }),
+        30_000,
+        "Password reset request timed out. Please try again.",
+      );
+      if (error) throw error;
+      setResetSent(true);
+      setOtp("");
+      toast.success("Check your email for a password reset link or recovery code.");
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setBusy(false);
     }
-    toast.success("Password reset link sent. Check your email.");
-    setForgotPassword(false);
   }
 
   async function updatePassword(e: React.FormEvent) {
@@ -202,14 +236,26 @@ function AuthPage() {
       return;
     }
     setBusy(true);
-    const { error } = await supabase.auth.updateUser({ password });
-    setBusy(false);
-    if (error) {
-      toast.error(error.message);
-      return;
+    try {
+      const { error } = await withTimeout(
+        supabase.auth.updateUser({ password }),
+        30_000,
+        "Password update timed out. Please try again.",
+      );
+      if (error) throw error;
+      await supabase.auth.signOut();
+      setRecoveryMode(false);
+      setForgotPassword(false);
+      setResetSent(false);
+      setPassword("");
+      setConfirmPassword("");
+      window.history.replaceState({}, "", "/auth");
+      toast.success("Password updated successfully.");
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setBusy(false);
     }
-    toast.success("Password updated successfully.");
-    navigate({ to: "/partner" });
   }
 
   const title = recoveryMode
@@ -220,7 +266,7 @@ function AuthPage() {
   const description = recoveryMode
     ? "Choose a new password for your delivery partner account."
     : forgotPassword
-      ? "Enter your email and we will send you a secure reset link."
+      ? "Verify the recovery link or code from your email, then choose a new password."
       : "Approved partners can go online and receive delivery requests.";
 
   return (
@@ -294,7 +340,10 @@ function AuthPage() {
                 </Button>
               </form>
             ) : forgotPassword ? (
-              <form className="space-y-4" onSubmit={sendResetEmail}>
+              <form
+                className="space-y-4"
+                onSubmit={resetSent ? verifyRecoveryCode : sendResetEmail}
+              >
                 <div className="space-y-2">
                   <Label htmlFor="reset-email">Email</Label>
                   <Input
@@ -302,21 +351,57 @@ function AuthPage() {
                     type="email"
                     autoComplete="email"
                     required
+                    disabled={resetSent}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                   />
                 </div>
-                <Button className="w-full" disabled={busy}>
+                {resetSent ? (
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      Open the reset link in your email, or enter the recovery code below.
+                    </p>
+                    <Label htmlFor="recovery-code">Recovery code</Label>
+                    <Input
+                      id="recovery-code"
+                      required
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                    />
+                  </div>
+                ) : null}
+                <Button
+                  className="w-full"
+                  disabled={busy || (resetSent && !/^\d{6,10}$/.test(otp))}
+                >
                   {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Send reset link
+                  {resetSent ? "Verify code and reset password" : "Send recovery email"}
                 </Button>
                 <button
                   type="button"
                   className="w-full text-sm text-primary hover:underline"
-                  onClick={() => setForgotPassword(false)}
+                  onClick={() => {
+                    setForgotPassword(false);
+                    setResetSent(false);
+                    setOtp("");
+                  }}
                 >
                   Back to sign in
                 </button>
+                {resetSent ? (
+                  <button
+                    type="button"
+                    className="w-full text-sm text-primary"
+                    onClick={() => {
+                      setResetSent(false);
+                      setOtp("");
+                    }}
+                  >
+                    Change email / resend recovery email
+                  </button>
+                ) : null}
               </form>
             ) : authMode === "otp" ? (
               <form className="space-y-4" onSubmit={otpSent ? verifyOtp : sendOtp}>

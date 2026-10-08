@@ -52,10 +52,10 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { db } from "@/lib/db";
-import { useSessionUser } from "@/hooks/usePartner";
+import { useSessionUser } from "@/shared/auth/session";
 import { useRoles } from "@/hooks/useRoles";
 import { INR } from "@/lib/delivery";
-import { DELIVERY_ORDER_SELECT, normalizeOrder } from "@/lib/shared-orders";
+import { DELIVERY_ORDER_SELECT, normalizeOrder } from "@/shared/orders/adapter";
 
 type OrderStatus =
   | "placed"

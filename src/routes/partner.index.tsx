@@ -16,15 +16,15 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { StatCard } from "@/components/delivery/StatCard";
-import { EmptyState } from "@/components/delivery/AppShell";
-import { StatusBadge } from "@/components/delivery/StatusBadge";
+import { StatCard } from "@/shared/components/StatCard";
+import { EmptyState } from "@/shared/components/AppShell";
+import { StatusBadge } from "@/shared/components/StatusBadge";
 import { db } from "@/lib/db";
-import { usePartner } from "@/hooks/usePartner";
+import { usePartner } from "@/modules/delivery/hooks/usePartner";
 import { ACTIVE_ASSIGNMENT_STATUSES, googleMapsDirections, INR, pct } from "@/lib/delivery";
-import { DELIVERY_ORDER_SELECT, normalizeAssignment } from "@/lib/shared-orders";
-import { SafetyActions } from "@/components/delivery/SafetyActions";
-import { MapPanel } from "@/components/delivery/MapPanel";
+import { DELIVERY_ORDER_SELECT, normalizeAssignment } from "@/shared/orders/adapter";
+import { SafetyActions } from "@/modules/delivery/components/SafetyActions";
+import { MapPanel } from "@/modules/delivery/components/MapPanel";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/partner/")({

@@ -5,10 +5,10 @@ import { Check, Clock, FileText, Upload } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { StatusBadge } from "@/components/delivery/StatusBadge";
+import { StatusBadge } from "@/shared/components/StatusBadge";
 import { supabase } from "@/integrations/supabase/client";
 import { db } from "@/lib/db";
-import { usePartner } from "@/hooks/usePartner";
+import { usePartner } from "@/modules/delivery/hooks/usePartner";
 import { DOC_LABELS } from "@/lib/delivery";
 
 export const Route = createFileRoute("/partner/documents")({

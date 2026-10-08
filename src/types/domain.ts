@@ -1,6 +1,7 @@
-import type { Database } from "@/integrations/supabase/types";
+export type { LocationUpdate } from "@/shared/core/delivery";
+import type { TableRow } from "@/shared/database";
 
-export type PartnerRow = Database["public"]["Tables"]["delivery_partners"]["Row"];
+export type PartnerRow = TableRow<"delivery_partners">;
 
 /** Fields used by the partner dashboard. KYC and payout secrets are excluded. */
 export type SafePartner = Pick<
@@ -44,10 +45,3 @@ export type SafePartner = Pick<
   | "approved_at"
   | "created_at"
 >;
-
-export type LocationUpdate = {
-  latitude: number;
-  longitude: number;
-  accuracyM?: number | null;
-  capturedAt?: string;
-};
