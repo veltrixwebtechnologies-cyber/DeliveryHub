@@ -6,6 +6,7 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  type ErrorComponentProps,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 
@@ -35,7 +36,7 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function ErrorComponent({ error, reset }: ErrorComponentProps) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
@@ -53,7 +54,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
         </p>
         {import.meta.env.DEV && (
           <pre className="mx-auto mt-3 max-w-full overflow-auto rounded-md bg-muted p-3 text-left text-xs text-muted-foreground">
-            {error.name}: {error.message}
+            {error instanceof Error ? `${error.name}: ${error.message}` : String(error)}
           </pre>
         )}
         <div className="mt-6 flex flex-wrap justify-center gap-2">
