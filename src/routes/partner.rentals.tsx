@@ -25,7 +25,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { usePartner } from "@/hooks/usePartner";
+import { usePartner } from "@/modules/delivery/hooks/usePartner";
 import { INR } from "@/lib/delivery";
 
 export const Route = createFileRoute("/partner/rentals")({

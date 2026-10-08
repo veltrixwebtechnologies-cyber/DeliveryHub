@@ -35,7 +35,7 @@ import {
   deleteVariant,
   togglePromotion,
   updateReturn,
-} from "@/services/sellerMarketplaceService";
+} from "@/modules/seller/services/sellerMarketplaceService";
 import {
   listCustomerMetrics,
   listExports,
@@ -45,7 +45,7 @@ import {
   listSettlements,
   listVariants,
   queueExport,
-} from "@/repositories/sellerMarketplaceRepository";
+} from "@/modules/seller/repositories/sellerMarketplaceRepository";
 import type {
   CreatePromotionInput,
   ProductVariant,

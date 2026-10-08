@@ -7,17 +7,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { AddressNavigation, MapPanel } from "@/components/delivery/MapPanel";
-import { StatusBadge } from "@/components/delivery/StatusBadge";
-import { EmptyState } from "@/components/delivery/AppShell";
-import { DeliveryNavigationScreen } from "@/components/delivery/DeliveryNavigationScreen";
+import { AddressNavigation, MapPanel } from "@/modules/delivery/components/MapPanel";
+import { StatusBadge } from "@/shared/components/StatusBadge";
+import { EmptyState } from "@/shared/components/AppShell";
+import { DeliveryNavigationScreen } from "@/modules/delivery/components/DeliveryNavigationScreen";
 import { supabase } from "@/integrations/supabase/client";
 import { db } from "@/lib/db";
-import { usePartner } from "@/hooks/usePartner";
+import { usePartner } from "@/modules/delivery/hooks/usePartner";
 import { ACTIVE_ASSIGNMENT_STATUSES, DELIVERY_FLOW, INR, nextFlowStep } from "@/lib/delivery";
-import { DELIVERY_ORDER_SELECT, normalizeAssignment, normalizeOrder } from "@/lib/shared-orders";
-import { SafetyActions } from "@/components/delivery/SafetyActions";
-import { deliveryTracker } from "@/services/delivery-location-tracker";
+import {
+  DELIVERY_ORDER_SELECT,
+  normalizeAssignment,
+  normalizeOrder,
+} from "@/shared/orders/adapter";
+import { SafetyActions } from "@/modules/delivery/components/SafetyActions";
+import { deliveryTracker } from "@/modules/delivery/services/delivery-location-tracker";
 
 function isValidLocation(lat: number, lng: number): boolean {
   return (
