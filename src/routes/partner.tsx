@@ -7,8 +7,11 @@ import {
   Clock,
   FileText,
   Gift,
+  Home,
+  IndianRupee,
   LayoutDashboard,
   Loader2,
+  MoreHorizontal,
   Navigation,
   Package,
   Wallet,
@@ -90,20 +93,17 @@ export const Route = createFileRoute("/partner")({
 });
 
 const NAV = [
-  { to: "/partner", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
-  { to: "/partner/deliveries", label: "Deliveries", icon: <Package className="h-4 w-4" /> },
-  { to: "/partner/earnings", label: "Earnings", icon: <Wallet className="h-4 w-4" /> },
+  { to: "/partner", label: "Home", icon: <Home className="h-4 w-4" /> },
+  { to: "/partner/earnings", label: "Earnings", icon: <IndianRupee className="h-4 w-4" /> },
+  { to: "/partner/deliveries", label: "My Shifts", icon: <Clock className="h-4 w-4" /> },
   {
     to: "/partner/referral",
-    label: "Refer & Earn",
+    label: "Refer",
     icon: <Gift className="h-4 w-4 text-emerald-500" />,
+    badge: "₹17,250",
+    badgeClassName: "bg-emerald-500 text-white font-bold",
   },
-  {
-    to: "/partner/rentals",
-    label: "Rent Vehicle",
-    icon: <Bike className="h-4 w-4 text-blue-500" />,
-  },
-  { to: "/partner/documents", label: "Documents", icon: <FileText className="h-4 w-4" /> },
+  { to: "/partner/more", label: "More", icon: <MoreHorizontal className="h-4 w-4" /> },
 ];
 
 type RequestRow = {
@@ -260,22 +260,21 @@ function PartnerLayout() {
 
   const markOffline = useCallback(
     async (reason: string) => {
-      if (!partner || partner.availability !== "online" || offlineWriteRef.current) return;
+      if (!partner || offlineWriteRef.current) return;
       offlineWriteRef.current = true;
-      let error: unknown = null;
       try {
-        await goOffline();
+        await setPartnerAvailability(partner.id, "offline");
+        await goOffline().catch(() => {});
       } catch (rpcError) {
-        error = rpcError;
+        console.warn("[offline] failed", rpcError);
+      } finally {
+        offlineWriteRef.current = false;
       }
-      offlineWriteRef.current = false;
-      if (!error) {
-        setRequest(null);
-        toast.info(`You are offline${reason ? `: ${reason}` : ""}.`);
-        await refresh();
-      }
+      setRequest(null);
+      toast.info(`You are offline${reason ? `: ${reason}` : ""}.`);
+      await refresh();
     },
-    [partner?.availability, partner?.id, refresh],
+    [partner?.id, refresh],
   );
 
   const submitPosition = useCallback(async (pos: GeolocationPosition) => {
@@ -770,19 +769,20 @@ function PartnerLayout() {
     }
     try {
       await setPartnerAvailability(partner.id, "online");
+      toast.success("You are now online! Looking for delivery requests...");
     } catch (error) {
       console.error("[delivery-availability] update failed", error);
       toast.error(error instanceof Error ? error.message : "Could not update availability.");
       return;
     }
     if (on) {
-      // Every online session starts with a fresh location attempt. This keeps
-      // an old location timestamp from carrying over after going offline.
       locationErrorShownRef.current = false;
       lastActivityRef.current = Date.now();
     }
     await refresh();
-    if (on && "geolocation" in navigator) requestCurrentPosition();
+    if (on && typeof navigator !== "undefined" && "geolocation" in navigator) {
+      void requestCurrentPosition();
+    }
   }
 
   if (partnerError) {
