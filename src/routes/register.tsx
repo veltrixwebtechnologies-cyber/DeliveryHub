@@ -1,7 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { ArrowLeft, Bike, Check, Eye, EyeOff, Loader2, Upload } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bike, Check, Eye, EyeOff, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,7 +28,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { db } from "@/lib/db";
 import { SHIFTS, VEHICLES, DOC_LABELS } from "@/lib/delivery";
-import { useSessionUser } from "@/hooks/usePartner";
+import { useSessionState } from "@/shared/auth/session";
+import { withRequestTimeout } from "@/shared/request-timeout";
 
 export const Route = createFileRoute("/register")({
   ssr: false,
@@ -88,8 +97,6 @@ const AUTOSAVE_FIELDS = [
   "employment_type",
 ] as const;
 
-const DATE_FIELDS = new Set(["date_of_birth", "licence_expiry", "insurance_expiry"]);
-
 function isValidIndianMobile(value: string) {
   return /^[6-9]\d{9}$/.test(value.replace(/\D/g, ""));
 }
@@ -113,14 +120,15 @@ function draftPayload(form: Record<string, string>) {
   const payload: Record<string, unknown> = {};
   for (const key of AUTOSAVE_FIELDS) {
     const value = (form[key] ?? "").trim();
-    if (!value && !DATE_FIELDS.has(key)) continue;
     payload[key] = value ? value : null;
   }
   return payload;
 }
 
 function RegisterPage() {
-  const user = useSessionUser();
+  const { user, error: sessionError, retry: retrySession } = useSessionState();
+  const [loadError, setLoadError] = useState("");
+  const [loadRevision, setLoadRevision] = useState(0);
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -133,7 +141,30 @@ function RegisterPage() {
   const [form, setForm] = useState<Record<string, string>>({});
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [saveError, setSaveError] = useState("");
+  const [retrySave, setRetrySave] = useState(0);
+  const [saveRevision, setSaveRevision] = useState(0);
   const lastSaved = useRef<string>("");
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+
+  function enqueueSave(patch: Record<string, unknown>) {
+    const operation = saveQueue.current
+      .catch(() => {})
+      .then(async () => {
+        const { data, error } = await db
+          .from("delivery_partners")
+          .update(patch)
+          .eq("id", partner!["id"])
+          .eq("user_id", user!.id)
+          .select("*")
+          .abortSignal(AbortSignal.timeout(15_000))
+          .single();
+        if (error) throw error;
+        return data;
+      });
+    saveQueue.current = operation;
+    return operation;
+  }
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const isBicycle = (form["vehicle_type"] ?? partner?.["vehicle_type"]) === "bicycle";
@@ -141,7 +172,7 @@ function RegisterPage() {
   // Autosave the draft ~1s after typing stops, so a refresh never loses progress.
   const draftKey = JSON.stringify(draftPayload(form));
   useEffect(() => {
-    if (!partner || loading || partner["status"] !== "draft") return;
+    if (!partner || !user || loading || busy || partner["status"] !== "draft") return;
     if (!lastSaved.current) {
       lastSaved.current = draftKey;
       return;
@@ -150,89 +181,147 @@ function RegisterPage() {
 
     const timer = setTimeout(async () => {
       setSaveState("saving");
-      const { error } = await db
-        .from("delivery_partners")
-        .update(JSON.parse(draftKey))
-        .eq("id", partner["id"]);
-      if (error) {
+      try {
+        const previous = JSON.parse(lastSaved.current);
+        const current = JSON.parse(draftKey);
+        const patch = Object.fromEntries(
+          Object.entries(current).filter(([key, value]) => previous[key] !== value),
+        );
+        await enqueueSave(patch);
+        lastSaved.current = draftKey;
+        setSaveError("");
+        setSavedAt(new Date());
+        setSaveState("saved");
+        // Reconcile edits made while an earlier save was in flight, including clears.
+        setSaveRevision((value) => value + 1);
+      } catch (error: any) {
+        setSaveError(error.message || "Could not save your draft.");
         setSaveState("error");
-        return;
       }
-      lastSaved.current = draftKey;
-      setSavedAt(new Date());
-      setSaveState("saved");
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [draftKey, partner, loading]);
+  }, [draftKey, partner, loading, busy, retrySave, saveRevision]);
 
   useEffect(() => {
     if (user === undefined) return;
+    let active = true;
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 15_000);
+    setLoading(true);
+    setLoadError("");
     (async () => {
-      const { data: zoneRows } = await db
-        .from("delivery_zones")
-        .select("id,name,city")
-        .eq("is_active", true)
-        .order("name");
-      setZones(zoneRows ?? []);
-
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-      const { data: p } = await db
-        .from("delivery_partners")
-        .select("*")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (p) {
-        setPartner(p);
-        setForm(
-          Object.fromEntries(
-            Object.entries(p).filter(([, v]) => typeof v === "string" && v !== null),
-          ) as Record<string, string>,
+      try {
+        const zoneQuery = db
+          .from("delivery_zones")
+          .select("id,name,city")
+          .eq("is_active", true)
+          .order("name")
+          .abortSignal(controller.signal);
+        const [zoneResult, partnerResult] = await withRequestTimeout(
+          Promise.all([
+            zoneQuery,
+            user
+              ? db
+                  .from("delivery_partners")
+                  .select("*")
+                  .eq("user_id", user.id)
+                  .abortSignal(controller.signal)
+                  .maybeSingle()
+              : Promise.resolve({ data: null, error: null }),
+          ]),
         );
-        setStep(Math.min(9, Math.max(2, p.registration_step ?? 2)));
-        const [{ data: d }, { data: pz }, { data: sh }] = await Promise.all([
-          db
-            .from("delivery_documents")
-            .select("doc_type,file_path,expiry_date")
-            .eq("partner_id", p.id),
-          db.from("delivery_partner_zones").select("zone_id").eq("partner_id", p.id),
-          db.from("delivery_shifts").select("slot").eq("partner_id", p.id),
-        ]);
-        setDocs(d ?? []);
-        setSelectedZones((pz ?? []).map((r: any) => r.zone_id));
-        setSelectedShifts((sh ?? []).map((r: any) => r.slot));
-        if (p.status !== "draft") navigate({ to: "/partner" });
+        if (!active) return;
+        if (zoneResult.error) throw zoneResult.error;
+        if (partnerResult.error) throw partnerResult.error;
+        const zoneRows = zoneResult.data;
+        setZones(zoneRows ?? []);
+
+        if (!user) {
+          setLoading(false);
+          return;
+        }
+        const p = partnerResult.data;
+        if (p) {
+          setPartner(p);
+          lastSaved.current = JSON.stringify(draftPayload(p));
+          setForm(
+            Object.fromEntries(
+              Object.entries(p).filter(([, v]) => typeof v === "string" && v !== null),
+            ) as Record<string, string>,
+          );
+          setStep(Math.min(9, Math.max(2, p.registration_step ?? 2)));
+          const results = await withRequestTimeout(
+            Promise.all([
+              db
+                .from("delivery_documents")
+                .select("doc_type,file_path,expiry_date")
+                .eq("partner_id", p.id)
+                .abortSignal(controller.signal),
+              db
+                .from("delivery_partner_zones")
+                .select("zone_id")
+                .eq("partner_id", p.id)
+                .abortSignal(controller.signal),
+              db
+                .from("delivery_shifts")
+                .select("slot")
+                .eq("partner_id", p.id)
+                .abortSignal(controller.signal),
+            ]),
+          );
+          if (!active) return;
+          for (const result of results) if (result.error) throw result.error;
+          const [{ data: d }, { data: pz }, { data: sh }] = results;
+          setDocs(d ?? []);
+          setSelectedZones((pz ?? []).map((r: any) => r.zone_id));
+          setSelectedShifts((sh ?? []).map((r: any) => r.slot));
+          if (p.status !== "draft") navigate({ to: "/partner" });
+        }
+      } catch (error: any) {
+        if (active) setLoadError(error.message || "Could not load registration. Please retry.");
+      } finally {
+        clearTimeout(deadline);
+        if (active) setLoading(false);
       }
-      setLoading(false);
     })();
-  }, [user, navigate]);
+    return () => {
+      active = false;
+      clearTimeout(deadline);
+      controller.abort();
+    };
+  }, [user?.id, user === undefined, navigate, loadRevision]);
 
   async function savePartner(patch: Record<string, unknown>, nextStep: number) {
     if (!partner) return;
     setBusy(true);
-    const { data, error } = await db
-      .from("delivery_partners")
-      .update({
+    try {
+      const previous = JSON.parse(lastSaved.current || "{}");
+      const current = draftPayload(form);
+      const pending = Object.fromEntries(
+        Object.entries(current).filter(([key, value]) => previous[key] !== value),
+      );
+      const data = await enqueueSave({
+        ...pending,
         ...patch,
         registration_step: Math.max(partner["registration_step"] ?? 1, nextStep),
-      })
-      .eq("id", partner["id"])
-      .select("*")
-      .single();
-    setBusy(false);
-    if (error) {
+      });
+      lastSaved.current = JSON.stringify(current);
+      setSaveState("saved");
+      setSavedAt(new Date());
+      setPartner(data);
+      if (nextStep > 9) {
+        toast.success("Application submitted for verification");
+        navigate({ to: "/partner" });
+      } else {
+        setStep(nextStep);
+      }
+    } catch (error: any) {
+      setSaveState("error");
+      setSaveError(error.message);
       toast.error(error.message);
-      return;
-    }
-    setPartner(data);
-    if (nextStep > 9) {
-      toast.success("Application submitted for verification");
-      navigate({ to: "/partner" });
-    } else {
-      setStep(nextStep);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -283,7 +372,9 @@ function RegisterPage() {
     hasValue("gender", "emergency_contact_name") &&
     isValidAdultDate(form["date_of_birth"] ?? "") &&
     isValidIndianMobile(form["emergency_contact_number"] ?? "");
-  const validStep3 = hasValue("house_number", "street", "area", "city", "state", "pincode");
+  const validStep3 =
+    hasValue("house_number", "street", "area", "city", "state") &&
+    /^[1-9]\d{5}$/.test(form["pincode"] ?? "");
   const validStep4 =
     hasValue("vehicle_type", "vehicle_brand", "vehicle_model", "vehicle_color") &&
     (isBicycle
@@ -294,7 +385,8 @@ function RegisterPage() {
         hasDoc("insurance") &&
         hasDoc("vehicle_photo"));
   const validStep5 =
-    isBicycle || (hasValue("licence_number", "licence_expiry") && hasDoc("licence"));
+    isBicycle ||
+    (hasValue("licence_number") && isFutureDate(form["licence_expiry"] ?? "") && hasDoc("licence"));
   const panNumber = (form["pan_number"] ?? "").trim().toUpperCase();
   const validPanNumber = /^[A-Z]{5}\d{4}[A-Z]$/.test(panNumber);
   const validStep6 =
@@ -303,14 +395,33 @@ function RegisterPage() {
     hasDoc("aadhaar_front") &&
     hasDoc("aadhaar_back") &&
     hasDoc("pan");
-  const validStep7 = hasValue(
-    "bank_account_holder",
-    "bank_name",
-    "bank_account_number",
-    "bank_ifsc",
-    "upi_id",
-  );
+  const validStep7 =
+    hasValue("bank_account_holder", "bank_name", "bank_account_number", "bank_ifsc", "upi_id") &&
+    /^\d{9,18}$/.test(form["bank_account_number"] ?? "") &&
+    /^[A-Z]{4}0[A-Z0-9]{6}$/.test(form["bank_ifsc"] ?? "") &&
+    /^[\w.-]+@[\w.-]+$/.test(form["upi_id"] ?? "");
 
+  if (sessionError || loadError) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-16">
+        <Card>
+          <CardContent className="space-y-4 p-6">
+            <p role="alert" className="text-destructive">
+              {sessionError || loadError}
+            </p>
+            <Button
+              onClick={() => {
+                retrySession();
+                setLoadRevision((value) => value + 1);
+              }}
+            >
+              Retry loading registration
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
   if (loading) {
     return (
       <div className="mx-auto max-w-2xl space-y-4 px-4 py-16">
@@ -367,7 +478,14 @@ function RegisterPage() {
             ) : null}
             {saveState === "error" ? (
               <span className="text-destructive">
-                Couldn’t autosave — your next step will retry.
+                Couldn’t autosave: {saveError}{" "}
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={() => setRetrySave((v) => v + 1)}
+                >
+                  Retry save
+                </button>
               </span>
             ) : null}
             {saveState === "idle" && partner ? (
@@ -383,14 +501,23 @@ function RegisterPage() {
                 existingUser={!!user && !!partner}
                 currentUserId={user?.id}
                 currentUserEmail={user?.email}
+                emailConfirmed={Boolean(user?.email_confirmed_at)}
                 currentUserName={
-                  user?.user_metadata?.["full_name"] ?? user?.user_metadata?.["display_name"]
+                  partner?.["full_name"] ??
+                  user?.user_metadata?.["full_name"] ??
+                  user?.user_metadata?.["display_name"]
                 }
+                existingPartner={partner}
                 busy={busy}
                 setBusy={setBusy}
+                onBack={() => navigate({ to: "/" })}
                 onDone={(p) => {
                   setPartner(p);
-                  setStep(2);
+                  if (p["status"] !== "draft") {
+                    navigate({ to: "/partner" });
+                  } else {
+                    setStep(Math.min(9, Math.max(2, p["registration_step"] ?? 2)));
+                  }
                 }}
               />
             ) : null}
@@ -523,7 +650,11 @@ function RegisterPage() {
                     ))}
                   </RadioGroup>
                 </Field>
-                <Field label="Vehicle number">
+                <Field
+                  label={
+                    isBicycle ? "Vehicle number (not applicable to bicycle)" : "Vehicle number"
+                  }
+                >
                   <Input
                     placeholder={isBicycle ? "Not required for bicycle" : "TN 37 AB 1234"}
                     value={form["vehicle_number"] ?? ""}
@@ -862,7 +993,17 @@ function RegisterPage() {
                   busy={busy}
                   onBack={() => setStep(8)}
                   nextLabel="Submit for verification"
-                  disabled={!form["employment_type"] || selectedShifts.length === 0}
+                  disabled={
+                    !form["employment_type"] ||
+                    selectedShifts.length === 0 ||
+                    !validStep2 ||
+                    !validStep3 ||
+                    !validStep4 ||
+                    !validStep5 ||
+                    !validStep6 ||
+                    !validStep7 ||
+                    selectedZones.length === 0
+                  }
                   onNext={async () => {
                     setBusy(true);
                     const { error: deleteError } = await db
@@ -893,11 +1034,26 @@ function RegisterPage() {
   );
 }
 
+function requiredControls(children: React.ReactNode): React.ReactNode {
+  return Children.map(children, (child) => {
+    if (!isValidElement<{ children?: React.ReactNode; required?: boolean }>(child)) return child;
+    if (child.type === Input || child.type === Select || child.type === RadioGroup) {
+      return cloneElement(child, { required: true });
+    }
+    return child.props.children
+      ? cloneElement(child, { children: requiredControls(child.props.children) })
+      : child;
+  });
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const applicable = !label.includes("not applicable");
   return (
     <div className="space-y-2">
-      <Label>{label}</Label>
-      {children}
+      <Label>
+        {label} {applicable ? <span className="text-destructive">*</span> : null}
+      </Label>
+      {applicable ? requiredControls(children) : children}
     </div>
   );
 }
@@ -960,17 +1116,23 @@ function StepAccount({
   currentUserId,
   currentUserEmail,
   currentUserName,
+  emailConfirmed,
+  existingPartner,
   busy,
   setBusy,
   onDone,
+  onBack,
 }: {
   existingUser: boolean;
   currentUserId?: string | undefined;
   currentUserEmail?: string | undefined;
   currentUserName?: string | undefined;
+  emailConfirmed: boolean;
+  existingPartner: Record<string, any> | null;
   busy: boolean;
   setBusy: (b: boolean) => void;
   onDone: (p: Record<string, any>) => void;
+  onBack: () => void;
 }) {
   const [showPassword, setShowPassword] = useState(false);
   const [verificationPending, setVerificationPending] = useState(false);
@@ -978,7 +1140,7 @@ function StepAccount({
   const [verifiedEmail, setVerifiedEmail] = useState("");
   const [values, setValues] = useState({
     ["full_name"]: currentUserName ?? "",
-    mobile: "",
+    mobile: existingPartner?.["mobile"] ?? "",
     email: currentUserEmail ?? "",
     password: "",
   });
@@ -986,25 +1148,53 @@ function StepAccount({
   const valid = useMemo(
     () =>
       values["full_name"].trim().length > 2 &&
-      /^[0-9]{10}$/.test(values.mobile.replace(/\D/g, "").slice(-10)) &&
+      isValidIndianMobile(values.mobile) &&
       /\S+@\S+\.\S+/.test(values.email) &&
       (Boolean(currentUserId) || values.password.length >= 8),
     [values, currentUserId],
   );
 
   async function createPartner(userId: string, email: string) {
-    const { data: p, error: pErr } = await db
+    const { data: verified, error: verificationError } = await withRequestTimeout(
+      supabase.auth.getUser(),
+    );
+    if (verificationError || verified.user?.id !== userId || !verified.user?.email_confirmed_at) {
+      setBusy(false);
+      toast.error("Verify your account email before continuing registration.");
+      return;
+    }
+    // Identity is shared across roles. Reuse an existing rider profile instead
+    // of inserting again when a Shopper/Seller account signs in during onboarding.
+    const { data: prior, error: lookupError } = await db
       .from("delivery_partners")
-      .insert({
-        user_id: userId,
-        ["full_name"]: values["full_name"].trim(),
-        mobile: values.mobile.trim(),
-        email,
-        mobile_verified: false,
-        email_verified: true,
-        registration_step: 2,
-      })
       .select("*")
+      .eq("user_id", userId)
+      .abortSignal(AbortSignal.timeout(15_000))
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+    if (prior && !existingPartner) {
+      onDone(prior);
+      return;
+    }
+    const payload = {
+      user_id: userId,
+      ["full_name"]: values["full_name"].trim(),
+      mobile: values.mobile.trim(),
+      email,
+      mobile_verified: false,
+      email_verified: true,
+      registration_step: 2,
+    };
+    const write = existingPartner
+      ? db
+          .from("delivery_partners")
+          .update({ full_name: values.full_name.trim(), mobile: values.mobile.trim() })
+          .eq("id", existingPartner["id"])
+          .eq("user_id", userId)
+      : db.from("delivery_partners").insert(payload);
+    const { data: p, error: pErr } = await write
+      .select("*")
+      .abortSignal(AbortSignal.timeout(15_000))
       .single();
     setBusy(false);
     if (pErr) {
@@ -1016,35 +1206,97 @@ function StepAccount({
   }
 
   async function createAccount() {
+    if (!valid) return;
     setBusy(true);
-    let userId = currentUserId;
-    if (!userId) {
-      const { data, error } = await supabase.auth.signUp({
-        email: values.email.trim(),
-        password: values.password,
-        options: { emailRedirectTo: window.location.origin },
-      });
-      if (error || !data.user) {
+    if (currentUserId && !emailConfirmed) {
+      try {
+        const { error } = await withRequestTimeout(
+          supabase.auth.resend({ type: "signup", email: values.email.trim() }),
+        );
         setBusy(false);
-        if (error?.message.toLowerCase().includes("already registered")) {
-          toast.error(
-            "This email is already registered. Sign in first, then continue registration.",
-          );
-        } else {
-          toast.error(error?.message ?? "Could not create the account");
-        }
-        return;
-      }
-      userId = data.user.id;
-      if (!data.session) {
+        if (error) return void toast.error(error.message);
         setVerifiedEmail(values.email.trim());
         setVerificationPending(true);
+      } catch (error: any) {
+        toast.error(error.message);
+      } finally {
         setBusy(false);
-        toast.success("Verification code sent. Check your email to continue.");
-        return;
       }
+      return;
     }
-    await createPartner(userId, values.email.trim());
+    if (existingPartner && currentUserId) {
+      try {
+        const { data, error } = await db
+          .from("delivery_partners")
+          .update({
+            full_name: values.full_name.trim(),
+            mobile: values.mobile.trim(),
+          })
+          .eq("id", existingPartner["id"])
+          .eq("user_id", currentUserId)
+          .select("*")
+          .abortSignal(AbortSignal.timeout(15_000))
+          .single();
+        if (error) throw error;
+        onDone(data);
+      } catch (error: any) {
+        toast.error(error.message);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    try {
+      let userId = currentUserId;
+      if (!userId) {
+        const { data, error } = await withRequestTimeout(
+          supabase.auth.signUp({
+            email: values.email.trim(),
+            password: values.password,
+            options: { emailRedirectTo: window.location.origin },
+          }),
+          30_000,
+        );
+        const alreadyRegistered =
+          error?.code === "user_already_exists" ||
+          /already (registered|exists)/i.test(error?.message ?? "") ||
+          (!error && data.user?.identities?.length === 0);
+        if (alreadyRegistered) {
+          const { data: signedIn, error: signInError } = await withRequestTimeout(
+            supabase.auth.signInWithPassword({
+              email: values.email.trim(),
+              password: values.password,
+            }),
+            30_000,
+          );
+          if (signInError || !signedIn.user) {
+            throw new Error(
+              "Use your existing LocalShore account password. If you forgot it, open Sign in → Forgot password. Your Shopper/Seller account works here too.",
+            );
+          }
+          await createPartner(signedIn.user.id, values.email.trim());
+          return;
+        }
+        if (error || !data.user) {
+          setBusy(false);
+          toast.error(error?.message ?? "Could not create the account");
+          return;
+        }
+        userId = data.user.id;
+        if (!data.session) {
+          setVerifiedEmail(values.email.trim());
+          setVerificationPending(true);
+          setBusy(false);
+          toast.success("Verification code sent. Check your email to continue.");
+          return;
+        }
+      }
+      await createPartner(userId, values.email.trim());
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function verifyEmail() {
@@ -1053,30 +1305,25 @@ function StepAccount({
       return;
     }
     setBusy(true);
-    const { data, error } = await supabase.auth.verifyOtp({
-      email: verifiedEmail,
-      token: otp.trim(),
-      type: "signup",
-    });
-    if (error || !data.user) {
+    try {
+      const { data, error } = await withRequestTimeout(
+        supabase.auth.verifyOtp({
+          email: verifiedEmail,
+          token: otp.trim(),
+          type: "signup",
+        }),
+      );
+      if (error || !data.user) {
+        setBusy(false);
+        toast.error(error?.message ?? "That verification code is invalid or expired");
+        return;
+      }
+      await createPartner(data.user.id, verifiedEmail);
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
       setBusy(false);
-      toast.error(error?.message ?? "That verification code is invalid or expired");
-      return;
     }
-    await createPartner(data.user.id, verifiedEmail);
-  }
-
-  if (existingUser) {
-    return (
-      <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          You are already signed in. Continue to your partner area.
-        </p>
-        <Button asChild>
-          <Link to="/partner">Go to dashboard</Link>
-        </Button>
-      </div>
-    );
   }
 
   if (verificationPending) {
@@ -1126,9 +1373,16 @@ function StepAccount({
       <Field label="Mobile number">
         <Input
           inputMode="tel"
+          maxLength={10}
           value={values.mobile}
-          onChange={(e) => setValues({ ...values, mobile: e.target.value })}
+          onChange={(e) => setValues({ ...values, mobile: e.target.value.replace(/\D/g, "") })}
         />
+        {values.mobile && !isValidIndianMobile(values.mobile) ? (
+          <p role="alert" className="text-xs text-destructive">
+            Enter a 10-digit Indian mobile number starting with 6, 7, 8 or 9. Do not include a
+            leading 0 or +91.
+          </p>
+        ) : null}
         <p className="mt-1 text-xs text-muted-foreground">
           Mobile verification is completed during document review.
         </p>
@@ -1142,7 +1396,9 @@ function StepAccount({
         />
         <p className="mt-1 text-xs text-muted-foreground">
           {currentUserId
-            ? "Using your signed-in LocalShoree account."
+            ? emailConfirmed
+              ? "Email verified — using your signed-in LocalShore account."
+              : "Email verification is required before you can continue."
             : "Supabase Auth will create this account securely."}
         </p>
       </Field>
@@ -1168,10 +1424,28 @@ function StepAccount({
       ) : (
         <p className="text-sm text-muted-foreground">Using your existing Local Shore account.</p>
       )}
-      <Button className="w-full" disabled={!valid || busy} onClick={createAccount}>
-        {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-        Create account
-      </Button>
+      {!currentUserId ? (
+        <p className="text-xs text-muted-foreground">
+          Already a LocalShore shopper or seller? Use the same email and password. We will reuse
+          your account and add a delivery-partner profile.
+        </p>
+      ) : null}
+      <div className="flex items-center justify-between gap-3 pt-2">
+        <Button type="button" variant="ghost" disabled={busy} onClick={onBack}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back
+        </Button>
+        <Button
+          type="button"
+          disabled={!valid || busy}
+          onClick={createAccount}
+          aria-label={
+            existingUser ? "Save account details and continue" : "Create account and continue"
+          }
+        >
+          {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          Continue <ArrowRight className="ml-2 h-4 w-4" />
+        </Button>
+      </div>
       <p className="text-center text-sm text-muted-foreground">
         Already registered?{" "}
         <Link to="/auth" className="font-medium text-primary hover:underline">

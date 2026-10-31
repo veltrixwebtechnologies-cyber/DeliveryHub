@@ -13,8 +13,8 @@ import {
   Package,
   Wallet,
 } from "lucide-react";
-import { AppShell } from "@/components/delivery/AppShell";
-import { AddressNavigation, MapPanel } from "@/components/delivery/MapPanel";
+import { AppShell } from "@/shared/components/AppShell";
+import { AddressNavigation, MapPanel } from "@/modules/delivery/components/MapPanel";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,19 +24,19 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { db } from "@/lib/db";
-import { usePartner } from "@/hooks/usePartner";
+import { usePartner } from "@/modules/delivery/hooks/usePartner";
 import { useRoles } from "@/hooks/useRoles";
 import { INR, etaMinutes, PARTNER_STATUS_LABEL, googleMapsDirections } from "@/lib/delivery";
-import { StatusBadge } from "@/components/delivery/StatusBadge";
-import { DELIVERY_ORDER_SELECT, normalizeAssignment } from "@/lib/shared-orders";
+import { StatusBadge } from "@/shared/components/StatusBadge";
+import { DELIVERY_ORDER_SELECT, normalizeAssignment } from "@/shared/orders/adapter";
 import {
   acceptDelivery,
   claimNextDeliveryOffer,
   goOffline,
   rejectDelivery,
-} from "@/services/deliveryService";
-import { locationService } from "@/services/locationService";
-import { setPartnerAvailability } from "@/repositories/partnerRepository";
+} from "@/modules/delivery/services/deliveryService";
+import { locationService } from "@/modules/delivery/services/locationService";
+import { setPartnerAvailability } from "@/modules/delivery/repositories/partnerRepository";
 
 function isValidLocation(lat: number, lng: number) {
   return (

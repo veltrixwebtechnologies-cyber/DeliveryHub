@@ -1,0 +1,40 @@
+{
+  "repository": "Delivery Partner Hub",
+  "baseCommit": "c47e8508fca2dde4b12f9fb5f33db5c9507b763f",
+  "routeIds": [
+    "/",
+    "/admin",
+    "/auth",
+    "/partner",
+    "/partner/",
+    "/partner/deliveries",
+    "/partner/documents",
+    "/partner/earnings",
+    "/partner/referral",
+    "/partner/rentals",
+    "/register",
+    "/vendor",
+    "/vendor/$module"
+  ],
+  "migrations": {
+    "20260801063828_0b67bf45-4409-4206-bda6-5b43a0cacb1e.sql": "64f6983ae7452314ebdd5319bcbc291dcca86b9125742d882fe9b163f50f3167",
+    "20260801063914_0b4bfb8c-18a3-435a-9a4a-c7aa01a26c81.sql": "4fb567c0ea6d20b38131bad5287fa7ce9cb87787987e36ec45e45450c0c1a33d",
+    "20260801063940_e870fe0c-e172-42e9-ae33-47750311cfcc.sql": "b0d430787b9f660fbf518dcc69a2f62011e5925a1cbbcb0249c9996b3878d875",
+    "20260801065957_fffd4e60-f4dd-4d67-9d38-3258b1a0160a.sql": "9fe4776b54ef8bfe0a4e9017a8cee46c9f5c749f02eaefa7ecf4383ac023d74f",
+    "20260801073115_2d5032b5-22ce-49ae-82d3-c6bd733d00ab.sql": "6bfd3f43ade965a4f8d99f310fe22bcc836c0c1ab1fac7898633d87370ed9570",
+    "20260801073916_4aa340e6-97b9-4cb3-bf3a-4073c5c26c55.sql": "e75a08db5ad6970361a39d2b7e793a82428c823bff5108ea8344da28720f7c87",
+    "20260817000000_scalability_boundaries.sql": "939996bf14eab6a452034934afd691e151fc7a7585d1f9ce162f1c01366f53fe",
+    "20260817010000_seller_marketplace_modules.sql": "fbf67b8f741635ff6879fb9bce59a074a41e9acb9b93e576b972741a09eaeb9f",
+    "20260901160000_fix_vendor_delivery_partner_visibility.sql": "db35bdcd2c14456bf378b23c678a697254803c6bff78c93d3477d57d3119586c",
+    "20260901170000_ensure_available_delivery_partners.sql": "4f02cc12ac23b454f8f4cad6f92d7082405e93e997284f81da4cbfba7f858c0f",
+    "20260901180000_expand_delivery_zone_radius.sql": "a7717a7fe736ea7b00444233d18784677d7d1b59f6cb064b9ec876d95d697dd1",
+    "20260902000000_automatic_immediate_order_dispatch.sql": "e72cfde9b76c9a31ae77996f065cc4ce53c713f98e2e76fd8f09b9a4856adfe0",
+    "20260923120000_add_vehicle_insurance_expiry.sql": "2e377c79edac39c9687e00ad8f97ac22d6f3ae93382a3a1cc4256d8d822a0b3d",
+    "20261004210000_restore_delivery_partner_admin_update_grant.sql": "cdf0ce196112f7d5bc555b5bb441fb185757864fde0ebeb83fe7f05ea7196af1",
+    "20261005090000_delivery_partner_admin_review_rbac.sql": "c1598dd12c14259904bd44d2acc6e22a6dc24d4b4223dda5c1e17d4fa7b3d564",
+    "20261005110000_delivery_partner_review_permission.sql": "b56476c7e3734285215c42bec749a3764f4316818ebaa7d7fcfef362bc50168b",
+    "20261005130000_fix_delivery_partner_status_text.sql": "d148c4f327f08eafd0bffa881fc6657ecf2b1321346d16dbe3b7c2af2a3b8e58",
+    "20261005150000_reclaim_expired_delivery_offers.sql": "88fb943af5c6cb7d2f7fb524884df2ac9c90d1e3575568af17786bbbc0df564d",
+    "20261005180000_delivery_dispatch_timeout_indexes.sql": "fd2611cedf78e84a2ecf65241d0e39515675b20c8b1ffb9d8b0a1f4dda3d3a6b"
+  }
+}

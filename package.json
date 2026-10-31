@@ -6,10 +6,15 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
+    "prebuild": "npm run check:boundaries",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit",
+    "check:boundaries": "node scripts/check-module-boundaries.mjs",
+    "lint:modules": "eslint src/modules src/shared",
+    "test:architecture": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "5.5.7",
@@ -42,9 +47,9 @@
     "@supabase/supabase-js": "2.111.0",
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/react-query": "5.101.4",
-    "@tanstack/react-router": "1.170.18",
-    "@tanstack/react-start": "1.168.32",
-    "@tanstack/router-plugin": "1.168.23",
+    "@tanstack/react-router": "1.170.41",
+    "@tanstack/react-start": "1.168.60",
+    "@tanstack/router-plugin": "1.168.42",
     "@types/ioredis": "^4.28.10",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",

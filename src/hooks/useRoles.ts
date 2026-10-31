@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import type { LocalShoreRole, RoleStatus } from "@/types/roles";
 import { supabase } from "@/integrations/supabase/client";
-import { useSessionUser } from "@/hooks/usePartner";
+import { useSessionUser } from "@/shared/auth/session";
 
 export function useRoles() {
   const user = useSessionUser();

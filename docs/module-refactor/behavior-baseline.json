@@ -1,0 +1,179 @@
+[
+  {
+    "original": "src/hooks/usePartner.ts",
+    "targets": [
+      "src/shared/auth/session.ts",
+      "src/modules/delivery/hooks/usePartner.ts",
+      "src/shared/auth/delivery-admin.ts"
+    ],
+    "name": "useSessionUser",
+    "kind": "function",
+    "hash": "976faddb7470c5b9af59663075a4189c1fd5abcb47cb02b759f9a3d9b75c512d"
+  },
+  {
+    "original": "src/hooks/usePartner.ts",
+    "targets": [
+      "src/shared/auth/session.ts",
+      "src/modules/delivery/hooks/usePartner.ts",
+      "src/shared/auth/delivery-admin.ts"
+    ],
+    "name": "usePartner",
+    "kind": "function",
+    "hash": "8667dcbbeeab939bc4e6b56634b84cccd5e6a242f7f91caa9a53b2e88937f1b8"
+  },
+  {
+    "original": "src/hooks/usePartner.ts",
+    "targets": [
+      "src/shared/auth/session.ts",
+      "src/modules/delivery/hooks/usePartner.ts",
+      "src/shared/auth/delivery-admin.ts"
+    ],
+    "name": "useIsAdmin",
+    "kind": "function",
+    "hash": "33f79881fd4b6eadd71e8d3f5b02ffbc9d7e086e87a4a5bce999772232a1cd26"
+  },
+  {
+    "original": "src/services/deliveryService.ts",
+    "targets": [
+      "src/modules/delivery/services/deliveryService.ts"
+    ],
+    "name": "acceptDelivery",
+    "kind": "function",
+    "hash": "296b187a2de9ad747a4308c9db90ec4ed4c049a1536b7970e2528c2298421fa9"
+  },
+  {
+    "original": "src/services/deliveryService.ts",
+    "targets": [
+      "src/modules/delivery/services/deliveryService.ts"
+    ],
+    "name": "rejectDelivery",
+    "kind": "function",
+    "hash": "d7fab8da4f2351059fd3a5e3c7d8c4f9c6a8d8157bdde588a79dc7b6f660181a"
+  },
+  {
+    "original": "src/services/deliveryService.ts",
+    "targets": [
+      "src/modules/delivery/services/deliveryService.ts"
+    ],
+    "name": "claimNextDeliveryOffer",
+    "kind": "function",
+    "hash": "e1a22685538e2785c802a2ec3dc274df3e6a51b87c029ff407c519ac3de1d013"
+  },
+  {
+    "original": "src/services/deliveryService.ts",
+    "targets": [
+      "src/modules/delivery/services/deliveryService.ts"
+    ],
+    "name": "goOffline",
+    "kind": "function",
+    "hash": "22a2c80668624e8bb65e9b028214a30e45999d082def28cf35dccc687f9068b3"
+  },
+  {
+    "original": "src/repositories/partnerRepository.ts",
+    "targets": [
+      "src/modules/delivery/repositories/partnerRepository.ts"
+    ],
+    "name": "SAFE_PARTNER_SELECT",
+    "kind": "variable",
+    "hash": "dfbd4d0de6c41e6eb1684ca2395e42ab5d8cbb3ddd23ae246aea6253201eeb5e"
+  },
+  {
+    "original": "src/repositories/partnerRepository.ts",
+    "targets": [
+      "src/modules/delivery/repositories/partnerRepository.ts"
+    ],
+    "name": "getPartnerForDashboard",
+    "kind": "function",
+    "hash": "5582030849736d39def01f1813ce16f83364a6e3c920f1b2f275b2e394155ca1"
+  },
+  {
+    "original": "src/repositories/partnerRepository.ts",
+    "targets": [
+      "src/modules/delivery/repositories/partnerRepository.ts"
+    ],
+    "name": "setPartnerAvailability",
+    "kind": "function",
+    "hash": "092c0e5d1fb1f563f70a54ef2ef24fc8d2faa75bc10e50a3d0ed564b47ecf9c3"
+  },
+  {
+    "original": "src/lib/shared-orders.ts",
+    "targets": [
+      "src/shared/orders/adapter.ts"
+    ],
+    "name": "normalizeOrder",
+    "kind": "function",
+    "hash": "c86fada5c5b46150ca77f4609040a44bf97bf25ce3c273e642447d464acea1aa"
+  },
+  {
+    "original": "src/lib/shared-orders.ts",
+    "targets": [
+      "src/shared/orders/adapter.ts"
+    ],
+    "name": "normalizeAssignment",
+    "kind": "function",
+    "hash": "8d51522dcf2e5b8e276455670a3c720f1ed5af40378d121cccefdc6e80cac221"
+  },
+  {
+    "original": "src/lib/shared-orders.ts",
+    "targets": [
+      "src/shared/orders/adapter.ts"
+    ],
+    "name": "DELIVERY_ORDER_SELECT",
+    "kind": "variable",
+    "hash": "defbf802ef3c50ab5b7707b59b485f54ebc9509ea5558a8d23eb773d30c4091e"
+  },
+  {
+    "original": "src/services/delivery-location-tracker.ts",
+    "targets": [
+      "src/modules/delivery/services/delivery-location-tracker.ts"
+    ],
+    "name": "OFFLINE_QUEUE_KEY",
+    "kind": "variable",
+    "hash": "7c83f7fb0a083af9a531fbcd72a11944c0e5a1eb14366672bd40f175c8c5da9b"
+  },
+  {
+    "original": "src/services/delivery-location-tracker.ts",
+    "targets": [
+      "src/modules/delivery/services/delivery-location-tracker.ts"
+    ],
+    "name": "getOfflineQueue",
+    "kind": "function",
+    "hash": "54da76c9b337b17cdefaa3e9f1e81e66deaa801c6570528a10466a048bf22c09"
+  },
+  {
+    "original": "src/services/delivery-location-tracker.ts",
+    "targets": [
+      "src/modules/delivery/services/delivery-location-tracker.ts"
+    ],
+    "name": "saveOfflineQueue",
+    "kind": "function",
+    "hash": "08f404e7d593300805bb405f768837e8cc556192aa86189757800d48171be7d1"
+  },
+  {
+    "original": "src/services/delivery-location-tracker.ts",
+    "targets": [
+      "src/modules/delivery/services/delivery-location-tracker.ts"
+    ],
+    "name": "haversineDistanceMeters",
+    "kind": "function",
+    "hash": "4a9e9afc97770fd435adf28f72669c46f734ecf2cd575fdb458aab205745e710"
+  },
+  {
+    "original": "src/services/delivery-location-tracker.ts",
+    "targets": [
+      "src/modules/delivery/services/delivery-location-tracker.ts"
+    ],
+    "name": "DeliveryLocationTracker",
+    "kind": "class",
+    "hash": "ea721615ddccc3eaac8afebf528e2123792124a92c1dc1829af484e996810e03"
+  },
+  {
+    "original": "src/services/delivery-location-tracker.ts",
+    "targets": [
+      "src/modules/delivery/services/delivery-location-tracker.ts"
+    ],
+    "name": "deliveryTracker",
+    "kind": "variable",
+    "hash": "9936d3ac6bdf484c6849e26f0fea04201150a175e1176d2f03094b71fc0e4ba5"
+  }
+]

@@ -13,10 +13,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { StatCard } from "@/components/delivery/StatCard";
-import { StatusBadge } from "@/components/delivery/StatusBadge";
+import { StatCard } from "@/shared/components/StatCard";
+import { StatusBadge } from "@/shared/components/StatusBadge";
 import { db } from "@/lib/db";
-import { usePartner } from "@/hooks/usePartner";
+import { usePartner } from "@/modules/delivery/hooks/usePartner";
 import { INR } from "@/lib/delivery";
 
 export const Route = createFileRoute("/partner/earnings")({

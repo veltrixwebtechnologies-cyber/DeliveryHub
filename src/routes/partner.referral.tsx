@@ -17,8 +17,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { StatCard } from "@/components/delivery/StatCard";
-import { usePartner } from "@/hooks/usePartner";
+import { StatCard } from "@/shared/components/StatCard";
+import { usePartner } from "@/modules/delivery/hooks/usePartner";
 import { INR } from "@/lib/delivery";
 
 export const Route = createFileRoute("/partner/referral")({
