@@ -144,6 +144,8 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+import { LocalDbSyncWidget } from "@/components/delivery/LocalDbSyncWidget";
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
@@ -151,6 +153,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
+      <LocalDbSyncWidget />
       <Toaster position="top-center" richColors />
     </QueryClientProvider>
   );

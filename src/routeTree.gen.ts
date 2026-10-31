@@ -19,6 +19,7 @@ import { Route as PartnerIndexRouteImport } from './routes/partner.index'
 import { Route as PartnerDeliveriesRouteImport } from './routes/partner.deliveries'
 import { Route as PartnerDocumentsRouteImport } from './routes/partner.documents'
 import { Route as PartnerEarningsRouteImport } from './routes/partner.earnings'
+import { Route as PartnerMoreRouteImport } from './routes/partner.more'
 import { Route as PartnerReferralRouteImport } from './routes/partner.referral'
 import { Route as PartnerRentalsRouteImport } from './routes/partner.rentals'
 import { Route as VendorModuleRouteImport } from './routes/vendor.$module'
@@ -73,6 +74,11 @@ const PartnerEarningsRoute = PartnerEarningsRouteImport.update({
   path: '/earnings',
   getParentRoute: () => PartnerRoute,
 } as any)
+const PartnerMoreRoute = PartnerMoreRouteImport.update({
+  id: '/more',
+  path: '/more',
+  getParentRoute: () => PartnerRoute,
+} as any)
 const PartnerReferralRoute = PartnerReferralRouteImport.update({
   id: '/referral',
   path: '/referral',
@@ -99,6 +105,7 @@ export interface FileRoutesByFullPath {
   '/partner/deliveries': typeof PartnerDeliveriesRoute
   '/partner/documents': typeof PartnerDocumentsRoute
   '/partner/earnings': typeof PartnerEarningsRoute
+  '/partner/more': typeof PartnerMoreRoute
   '/partner/referral': typeof PartnerReferralRoute
   '/partner/rentals': typeof PartnerRentalsRoute
   '/vendor/$module': typeof VendorModuleRoute
@@ -113,6 +120,7 @@ export interface FileRoutesByTo {
   '/partner/deliveries': typeof PartnerDeliveriesRoute
   '/partner/documents': typeof PartnerDocumentsRoute
   '/partner/earnings': typeof PartnerEarningsRoute
+  '/partner/more': typeof PartnerMoreRoute
   '/partner/referral': typeof PartnerReferralRoute
   '/partner/rentals': typeof PartnerRentalsRoute
   '/vendor/$module': typeof VendorModuleRoute
@@ -129,6 +137,7 @@ export interface FileRoutesById {
   '/partner/deliveries': typeof PartnerDeliveriesRoute
   '/partner/documents': typeof PartnerDocumentsRoute
   '/partner/earnings': typeof PartnerEarningsRoute
+  '/partner/more': typeof PartnerMoreRoute
   '/partner/referral': typeof PartnerReferralRoute
   '/partner/rentals': typeof PartnerRentalsRoute
   '/vendor/$module': typeof VendorModuleRoute
@@ -146,6 +155,7 @@ export interface FileRouteTypes {
     | '/partner/deliveries'
     | '/partner/documents'
     | '/partner/earnings'
+    | '/partner/more'
     | '/partner/referral'
     | '/partner/rentals'
     | '/vendor/$module'
@@ -160,6 +170,7 @@ export interface FileRouteTypes {
     | '/partner/deliveries'
     | '/partner/documents'
     | '/partner/earnings'
+    | '/partner/more'
     | '/partner/referral'
     | '/partner/rentals'
     | '/vendor/$module'
@@ -175,6 +186,7 @@ export interface FileRouteTypes {
     | '/partner/deliveries'
     | '/partner/documents'
     | '/partner/earnings'
+    | '/partner/more'
     | '/partner/referral'
     | '/partner/rentals'
     | '/vendor/$module'
@@ -262,6 +274,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PartnerEarningsRouteImport
       parentRoute: typeof PartnerRoute
     }
+    '/partner/more': {
+      id: '/partner/more'
+      path: '/more'
+      fullPath: '/partner/more'
+      preLoaderRoute: typeof PartnerMoreRouteImport
+      parentRoute: typeof PartnerRoute
+    }
     '/partner/referral': {
       id: '/partner/referral'
       path: '/referral'
@@ -290,6 +309,7 @@ interface PartnerRouteChildren {
   PartnerDeliveriesRoute: typeof PartnerDeliveriesRoute
   PartnerDocumentsRoute: typeof PartnerDocumentsRoute
   PartnerEarningsRoute: typeof PartnerEarningsRoute
+  PartnerMoreRoute: typeof PartnerMoreRoute
   PartnerReferralRoute: typeof PartnerReferralRoute
   PartnerRentalsRoute: typeof PartnerRentalsRoute
   PartnerIndexRoute: typeof PartnerIndexRoute
@@ -299,6 +319,7 @@ const PartnerRouteChildren: PartnerRouteChildren = {
   PartnerDeliveriesRoute: PartnerDeliveriesRoute,
   PartnerDocumentsRoute: PartnerDocumentsRoute,
   PartnerEarningsRoute: PartnerEarningsRoute,
+  PartnerMoreRoute: PartnerMoreRoute,
   PartnerReferralRoute: PartnerReferralRoute,
   PartnerRentalsRoute: PartnerRentalsRoute,
   PartnerIndexRoute: PartnerIndexRoute,

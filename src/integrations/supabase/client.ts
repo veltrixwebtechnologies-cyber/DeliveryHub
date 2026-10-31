@@ -99,12 +99,41 @@ function createSupabaseClient() {
 
 let _supabase: ReturnType<typeof createSupabaseClient> | undefined;
 
+import { localDb } from "@/db/localStorageDb";
+import { localAuth } from "@/db/localAuth";
+
+export const isLocalDbEnabled = () => {
+  const metaEnv = typeof import.meta !== "undefined" ? import.meta.env : undefined;
+  const runtimeEnv = typeof process !== "undefined" ? process.env : undefined;
+  const flag = metaEnv?.["VITE_USE_LOCAL_DB"] || runtimeEnv?.["VITE_USE_LOCAL_DB"];
+  return flag === "true" || flag === "1";
+};
+
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 export const supabase = new Proxy({} as ReturnType<typeof createSupabaseClient>, {
   get(_, prop) {
-    if (!_supabase) _supabase = createSupabaseClient();
+    if (isLocalDbEnabled()) {
+      if (prop === "auth") return localAuth;
+      if (prop === "from") return localDb.from;
+      if (prop === "rpc") return localDb.rpc;
+      if (prop === "storage") return localDb.storage;
+    }
+    if (!_supabase) {
+      try {
+        _supabase = createSupabaseClient();
+      } catch (err) {
+        if (isLocalDbEnabled()) {
+          if (prop === "auth") return localAuth;
+          if (prop === "from") return localDb.from;
+          if (prop === "rpc") return localDb.rpc;
+          if (prop === "storage") return localDb.storage;
+        }
+        throw err;
+      }
+    }
     const value = (_supabase as any)[prop];
     return typeof value === "function" ? value.bind(_supabase) : value;
   },
 });
+
